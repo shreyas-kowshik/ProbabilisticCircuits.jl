@@ -14,10 +14,12 @@ function learn_single_model(train_x;
 
     # init
     Random.seed!(seed)
-    pc, vtree = learn_struct_prob_circuit(train_x)
+    # pc, vtree = learn_struct_prob_circuit(train_x)
+    pc, vtree = learn_chow_liu_tree_circuit(train_x)
 
     # structure_update
-    loss(circuit) = heuristic_loss(circuit, train_x; pick_edge=pick_edge, pick_var=pick_var)
+    # loss(circuit) = heuristic_loss(circuit, train_x; pick_edge=pick_edge, pick_var=pick_var)
+    loss(circuit) = ind_loss(circuit, train_x)
     pc_split_step(circuit) = begin
         c::ProbCircuit, = split_step(circuit; loss=loss, depth=depth, sanity_check=sanity_check)
         estimate_parameters(c, train_x; pseudocount=pseudocount)
@@ -36,4 +38,3 @@ function learn_single_model(train_x;
         primitives=[pc_split_step], kwargs=Dict(pc_split_step=>()), 
         maxiter=maxiter, stop=log_per_iter)
 end
-

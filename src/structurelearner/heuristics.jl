@@ -67,6 +67,106 @@ function vRand(vars::Vector{Var})
     return Var(rand(vars))
 end
 
+function independenceMI(mat, prime_lits, sub_lits, lit_map)
+        score = 0.0
+        t0 = Base.time_ns()
+        (_, mi) = mutual_information(mat, nothing; α=1.0)
+        t1 = Base.time_ns()
+        # println("mi cal : $((t1 - t0)/1.0e9)")
+        mi[diagind(mi)] .= 0
+
+        # for p in prime_lits
+        #     for s in sub_lits
+        #         score += mi[lit_map[p], lit_map[s]]
+        #     end
+        # end
+        mapped_primes = [lit_map[p] for p in prime_lits]
+        mapped_subs = [lit_map[s] for s in sub_lits]
+        score = sum(mi[mapped_primes, mapped_subs])
+
+        return score
+end
+
+function ind_prime_sub(values, flows, candidates::Vector{Tuple{Node, Node}}, scope, data_matrix)
+    min_score = Inf
+    or0 = nothing
+    and0 = nothing
+    var0 = nothing
+
+    for (or, and) in candidates
+        lits = collect(Set{Lit}(scope[and]))
+        lits = sort(collect(intersect(filter(l -> l > 0, lits), - collect(filter(l -> l < 0, lits)))))
+        lit_map = Dict(l => i for (i, l) in enumerate(lits))
+        vars = Var.(lits)
+
+        prime_lits = sort([l for l in lits if l in scope[children(and)[1]]])
+        sub_lits = sort([l for l in lits if l in scope[children(and)[2]]])
+        examples_id = downflow_all(values, flows, or, and)[1:num_examples(data_matrix)]
+
+        stotal = 0.0
+        t0 = Base.time_ns()
+        stotal = independenceMI(data_matrix[examples_id, vars], prime_lits, sub_lits, lit_map)
+        t1 = Base.time_ns()
+        # println("First Ind Cal : $((t1 - t0)/1.0e9)")
+
+        if stotal == 0.0
+            continue
+        end
+
+        for var in lits
+            pos_scope = examples_id .& data_matrix[:, var]
+            neg_scope = examples_id .& (.!(pos_scope))
+            s1 = 0.0
+            s2 = 0.0
+
+            t0 = Base.time_ns()
+            if sum(pos_scope) > 0
+                s1 = independenceMI(data_matrix[pos_scope, vars], prime_lits, sub_lits, lit_map)
+            end
+            t1 = Base.time_ns()
+            # println("Second Ind Cal : $((t1 - t0)/1.0e9)")
+
+            t0 = Base.time_ns()
+            if sum(neg_scope) > 0
+                s2 = independenceMI(data_matrix[neg_scope, vars], prime_lits, sub_lits, lit_map)
+            end
+            t1 = Base.time_ns()
+            # println("Third Ind Cal : $((t1 - t0)/1.0e9)")
+
+            s = s1 + s2
+
+            # if stotal != 0 && s == 0
+            #     min_score = s
+            #     or0 = or
+            #     and0 = and
+            #     var0 = var
+            #     return min_score, Var.(var0), (or0, and0)
+            # end
+
+            # println("Score : $s")
+
+            if s < min_score
+                min_score = s
+                or0 = or
+                and0 = and
+                var0 = var
+            end
+        end
+    end
+
+    return min_score, Var.(var0), (or0, and0)
+end
+
+
+function ind_loss(circuit::LogicCircuit, train_x)
+    candidates, scope = split_candidates(circuit)
+    values, flows = satisfies_flows(circuit, train_x)
+
+    score, var, (or, and) = ind_prime_sub(values, flows, candidates, scope, train_x)
+    return (or, and), Var(var)
+end
+
+
 function heuristic_loss(circuit::LogicCircuit, train_x; pick_edge="eFlow", pick_var="vMI")
     candidates, scope = split_candidates(circuit)
     values, flows = satisfies_flows(circuit, train_x)
