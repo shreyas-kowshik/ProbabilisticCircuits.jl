@@ -1,5 +1,8 @@
 
 using LinearAlgebra: diagind
+using CUDA: CUDA, @cuda
+using DataFrames: DataFrame
+
 """
 Pick the edge with maximum flow
 """
@@ -67,45 +70,69 @@ function vRand(vars::Vector{Var})
     return Var(rand(vars))
 end
 
-function independenceMI_gpu(prime_mat, sub_mat, pMI_vec)
+function independenceMI_gpu(prime_mat, sub_mat, not_prime_mat, not_sub_mat, pMI_vec, storage_arr,
+                            num_prime_vars, num_sub_vars, N, α)
     index_x = (blockIdx().x - 1) * blockDim().x + threadIdx().x
     index_y = (blockIdx().y - 1) * blockDim().y + threadIdx().y
 
 
-    α = 1.0 # Smoothing
-    N = size(prime_mat)[1]
-    num_prime_vars = size(prime_mat)[2]
-    num_sub_vars = size(sub_mat)[2]
+    # α = 1.0 # Smoothing
+    # N = size(prime_mat)[1]
+    # num_prime_vars = size(prime_mat)[2]
+    # num_sub_vars = size(sub_mat)[2]
 
     if (index_x > num_prime_vars) || (index_y > num_sub_vars)
         return nothing
     end
 
-    prime_var = prime_mat[:, index_x]
-    sub_var = sub_mat[:, index_y]
-    not_prime_var = .!(prime_var)
-    not_sub_var = .!(sub_var)
+    # prime_var = prime_mat[:, index_x]
+    # sub_var = sub_mat[:, index_y]
+    # not_prime_var = not_prime_mat[:, index_x]
+    # not_sub_var = not_sub_mat[:, index_y]
+    # storage_mat[:, 12] = prime_mat[:, (blockIdx().x - 1) * blockDim().x + threadIdx().x]
+    # storage_mat[:, 13] = sub_mat[:, (blockIdx().y - 1) * blockDim().y + threadIdx().y]
+    # storage_mat[:, 14] = not_prime_mat[:, (blockIdx().x - 1) * blockDim().x + threadIdx().x]
+    # storage_mat[:, 15] = not_sub_mat[:, (blockIdx().y - 1) * blockDim().y + threadIdx().y]
 
-    sum_p = sum(prime_var)
-    sum_s = sum(sub_var)
+    # sum_p = sum(prime_var)
+    # sum_s = sum(sub_var)
+    storage_arr[1] = sum(prime_mat[:, index_x])
+    storage_arr[2] = sum(sub_mat[:, index_y])
 
-    px = (sum_p + 2.0 * α) / (N + 4.0 * α)
-    py = (sum_s + 2.0 * α) / (N + 4.0 * α)
-    p_notx = (N - sum_p + 2.0 * α) / (N + 4.0 * α)
-    p_noty = (N - sum_s + 2.0 * α) / (N + 4.0 * α)
+    # px = (sum_p + 2.0 * α) / (N + 4.0 * α)
+    # py = (sum_s + 2.0 * α) / (N + 4.0 * α)
+    # p_notx = (N - sum_p + 2.0 * α) / (N + 4.0 * α)
+    # p_noty = (N - sum_s + 2.0 * α) / (N + 4.0 * α)
+    storage_arr[3] = (storage_arr[1] + 2.0 * α) / (N + 4.0 * α)
+    storage_arr[4] = (storage_arr[2] + 2.0 * α) / (N + 4.0 * α)
+    storage_arr[5] = (N - storage_arr[1] + 2.0 * α) / (N + 4.0 * α)
+    storage_arr[6] = (N - storage_arr[2] + 2.0 * α) / (N + 4.0 * α)
 
-    p_x_y = (prime_var' * sub_var + α) / (N + 4.0 * α)
-    p_notx_y = (not_prime_var' * sub_var + α) / (N + 4.0 * α)
-    p_x_noty = (prime_var' * not_sub_var + α) / (N + 4.0 * α)
-    p_notx_noty = (not_prime_var' * not_sub_var + α) / (N + 4.0 * α)
+    # p_x_y = (prime_var' * sub_var + α) / (N + 4.0 * α)
+    # p_notx_y = (not_prime_var' * sub_var + α) / (N + 4.0 * α)
+    # p_x_noty = (prime_var' * not_sub_var + α) / (N + 4.0 * α)
+    # p_notx_noty = (not_prime_var' * not_sub_var + α) / (N + 4.0 * α)
+    # storage_arr[7] = (storage_arr[12]' * storage_arr[13] + α) / (N + 4.0 * α)
+    # storage_arr[8] = (storage_arr[14]' * storage_arr[13] + α) / (N + 4.0 * α)
+    # storage_arr[9] = (storage_arr[12]' * storage_arr[15] + α) / (N + 4.0 * α)
+    # storage_arr[10] = (storage_arr[14]' * storage_arr[15] + α) / (N + 4.0 * α)
+    storage_arr[7] = (prime_mat[:, index_x]' * sub_mat[:, index_y] + α) / (N + 4.0 * α)
+    storage_arr[8] = (not_prime_mat[:, index_x]' * sub_mat[:, index_y] + α) / (N + 4.0 * α)
+    storage_arr[9] = (prime_mat[:, index_x]' * not_sub_mat[:, index_y] + α) / (N + 4.0 * α)
+    storage_arr[10] = (not_prime_mat[:, index_x]' * not_sub_mat[:, index_y] + α) / (N + 4.0 * α)
 
-    pMI_val = 0.0
-    pMI_val += (p_x_y * log((p_x_y)/(p_x * p_y)))
-    pMI_val += (p_notx_y * log((p_notx_y)/(p_notx * p_y)))
-    pMI_val += (p_x_noty * log((p_x_noty)/(p_x * p_noty)))
-    pMI_val += (p_notx_noty * log((p_notx_noty)/(p_notx * p_noty)))
+    storage_arr[11] = 0.0
+    # storage_arr[11] += (p_x_y * CUDA.log((p_x_y)/(p_x * p_y)))
+    # storage_arr[11] += (p_notx_y * CUDA.log((p_notx_y)/(p_notx * p_y)))
+    # storage_arr[11] += (p_x_noty * CUDA.log((p_x_noty)/(p_x * p_noty)))
+    # storage_arr[11] += (p_notx_noty * CUDA.log((p_notx_noty)/(p_notx * p_noty)))
+    storage_arr[11] += (storage_arr[7] * CUDA.log((storage_arr[7])/(storage_arr[3] * storage_arr[4])))
+    storage_arr[11] += (storage_arr[8] * CUDA.log((storage_arr[8])/(storage_arr[5] * storage_arr[4])))
+    storage_arr[11] += (storage_arr[9] * CUDA.log((storage_arr[9])/(storage_arr[3] * storage_arr[6])))
+    storage_arr[11] += (storage_arr[10] * CUDA.log((storage_arr[10])/(storage_arr[5] * storage_arr[6])))
 
-    pMI_vec[(index_y - 1)*num_sub_vars + index_x] = pMI_val
+    pMI_vec[(index_y - 1)*num_sub_vars + index_x] = storage_arr[11]
+    # pMI_vec[(index_y - 1)*num_sub_vars + index_x] = 0.0
     return nothing
 end
 
@@ -125,7 +152,14 @@ function independenceMI_gpu_wrapper(mat, prime_lits, sub_lits, lit_map)
     # Data Type Conversions #
     prime_gpu = to_gpu(convert(Matrix, prime_mat))
     sub_gpu = to_gpu(convert(Matrix, sub_mat))
-    @cuda threads=num_threads blocks=num_blocks independenceMI_gpu(prime_gpu, sub_gpu, pMI_vec)
+    not_prime_gpu = to_gpu(convert(Matrix, .!(prime_mat)))
+    not_sub_gpu = to_gpu(convert(Matrix, .!(sub_mat)))
+    storage_arr = to_gpu(Array{Float64}(undef, 15))
+
+    @cuda threads=num_threads blocks=num_blocks independenceMI_gpu(prime_gpu, sub_gpu, 
+                                                not_prime_gpu, not_sub_gpu, pMI_vec,
+                                                storage_arr, size(prime_mat)[2], size(sub_mat)[2],
+                                                size(prime_mat)[1], 1.0)
 
     cpu_pMI = to_cpu(pMI_vec)
     return sum(cpu_pMI)
