@@ -172,8 +172,8 @@ end
 function independenceMI_gpu_wrapper(mat, prime_lits, sub_lits, lit_map)
     mapped_primes = [lit_map[p] for p in prime_lits]
     mapped_subs = [lit_map[s] for s in sub_lits]
-    prime_mat = mat[:, mapped_primes]
-    sub_mat = mat[:, mapped_subs]
+    prime_mat = mat[:, Var.(mapped_primes)]
+    sub_mat = mat[:, Var.(mapped_subs)]
 
     num_prime_vars = size(prime_mat)[2]
     num_sub_vars = size(sub_mat)[2]
@@ -184,7 +184,10 @@ function independenceMI_gpu_wrapper(mat, prime_lits, sub_lits, lit_map)
     num_blocks = (ceil(Int, num_prime_vars/16), ceil(Int, num_sub_vars/16))
     # Data Type Conversions #
     prime_gpu = to_gpu(convert(Matrix, prime_mat))
+    # println("PrimeGPU : $(sum(prime_gpu)) :: $(size(prime_mat)) :: $(typeof(prime_mat))")
     sub_gpu = to_gpu(convert(Matrix, sub_mat))
+    # println("PrimeGPU : $(sum(prime_gpu)) :: $(size(prime_gpu)) :: $(typeof(prime_gpu))")
+    # println("***********************")
     not_prime_gpu = to_gpu(convert(Matrix, .!(prime_mat)))
     not_sub_gpu = to_gpu(convert(Matrix, .!(sub_mat)))
     storage_arr = to_gpu(Array{Float64}(undef, 15))
@@ -251,24 +254,28 @@ function ind_prime_sub(values, flows, candidates::Vector{Tuple{Node, Node}}, sco
 
         examples_id = downflow_all(values, flows, or, and)[1:num_examples(data_matrix)]
 
+        if(sum(examples_id) == 0)
+            continue
+        end
+
         stotal = 0.0
         t0 = Base.time_ns()
         stotal = independenceMI(data_matrix[examples_id, prime_sub_vars], prime_lits, sub_lits, lit_map)
         t1 = Base.time_ns()
-        println("First Ind Cal : $((t1 - t0)/1.0e9)")
+        # println("First Ind Cal : $((t1 - t0)/1.0e9)")
 
         if stotal == 0.0
             continue
         end
 
         for var in lits
-            println(og_lits)
-            println(prime_lits)
-            println(sub_lits)
-            println(lits)
-            println(prime_sub_lits)
-            println("Var : $var")
-            println("----------------")
+            # println(og_lits)
+            # println(prime_lits)
+            # println(sub_lits)
+            # println(lits)
+            # println(prime_sub_lits)
+            # println("Var : $var")
+            # println("----------------")
 
             pos_scope = examples_id .& data_matrix[:, var]
             neg_scope = examples_id .& (.!(pos_scope))
@@ -280,14 +287,16 @@ function ind_prime_sub(values, flows, candidates::Vector{Tuple{Node, Node}}, sco
                 s1 = independenceMI(data_matrix[pos_scope, prime_sub_vars], prime_lits, sub_lits, lit_map)
             end
             t1 = Base.time_ns()
-            println("Second Ind Cal : $((t1 - t0)/1.0e9)")
+            # println("Second Ind Cal : $((t1 - t0)/1.0e9)")
+            # println("Pos Scope : $(sum(pos_scope))")
 
             t0 = Base.time_ns()
             if sum(neg_scope) > 0
                 s2 = independenceMI(data_matrix[neg_scope, prime_sub_vars], prime_lits, sub_lits, lit_map)
             end
             t1 = Base.time_ns()
-            println("Third Ind Cal : $((t1 - t0)/1.0e9)")
+            # println("Third Ind Cal : $((t1 - t0)/1.0e9)")
+            # println("Neg Scope : $(sum(neg_scope))")
 
             s = s1 + s2
 
