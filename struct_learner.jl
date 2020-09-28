@@ -90,25 +90,24 @@ function log_per_iter(pc, data, results; opts, time=missing, epoch=nothing, save
 
     println("*****************Results****************")
     # ll
-    train_ll = ll = EVI(pc, opts["train_x"])
+    train_ll = ll = EVI(pc, train_x)
     println("Train-LL : $(mean(train_ll))")
     push!(results["train_ll"], mean(train_ll))
     valid_ll = missing
     if issomething(opts["valid_x"])
-        valid_ll = EVI(pc, opts["valid_x"])
+        valid_ll = EVI(pc, valid_x)
         println("Valid-LL : $(mean(valid_ll))")
         push!(results["valid_ll"], mean(valid_ll))
     else
         push!(results["valid_ll"], missing)
     end
-    test_ll = missing
+        test_ll = missing
     if issomething(opts["test_x"])
-        test_ll = EVI(pc, opts["test_x"])
+        test_ll = EVI(pc, test_x)
         println("Test-:: : $(mean(test_ll))")
         push!(results["test_ll"], mean(test_ll))
     else
         push!(results["test_ll"], missing)
-
     end
 
     # save to csv, pdf
@@ -185,5 +184,5 @@ function learn_single_model(train_x, valid_x, test_x;
     log_per_iter_inline(pc)
     pc = struct_learn(pc; 
         primitives=[pc_split_step], kwargs=Dict(pc_split_step=>()), 
-        maxiter=maxiter, stop=log_per_iter_inline)
+        maxiter=maxiter, stop=log_per_iter)
 end
