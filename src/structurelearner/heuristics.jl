@@ -70,8 +70,10 @@ function vRand(vars::Vector{Var})
     return Var(rand(vars))
 end
 
-function independenceMI_gpu(prime_mat, sub_mat, not_prime_mat, not_sub_mat, pMI_vec, storage_arr,
-                            num_prime_vars, num_sub_vars, N, α)
+function independenceMI_gpu(p_marginal, s_marginal, p_s, notp_s, p_nots, notp_nots, 
+                            pMI_vec, 
+                            # storage_arr,
+                            num_prime_vars, num_sub_vars)
     index_x = (blockIdx().x - 1) * blockDim().x + threadIdx().x
     index_y = (blockIdx().y - 1) * blockDim().y + threadIdx().y
     out_index = (index_y - 1)*num_prime_vars + index_x
@@ -85,117 +87,144 @@ function independenceMI_gpu(prime_mat, sub_mat, not_prime_mat, not_sub_mat, pMI_
         return nothing
     end
 
-    # prime_var = prime_mat[:, index_x]
-    # sub_var = sub_mat[:, index_y]
-    # not_prime_var = not_prime_mat[:, index_x]
-    # not_sub_var = not_sub_mat[:, index_y]
-    # storage_mat[:, 12] = prime_mat[:, (blockIdx().x - 1) * blockDim().x + threadIdx().x]
-    # storage_mat[:, 13] = sub_mat[:, (blockIdx().y - 1) * blockDim().y + threadIdx().y]
-    # storage_mat[:, 14] = not_prime_mat[:, (blockIdx().x - 1) * blockDim().x + threadIdx().x]
-    # storage_mat[:, 15] = not_sub_mat[:, (blockIdx().y - 1) * blockDim().y + threadIdx().y]
+#     # prime_var = prime_mat[:, index_x]
+#     # sub_var = sub_mat[:, index_y]
+#     # not_prime_var = not_prime_mat[:, index_x]
+#     # not_sub_var = not_sub_mat[:, index_y]
+#     # storage_mat[:, 12] = prime_mat[:, (blockIdx().x - 1) * blockDim().x + threadIdx().x]
+#     # storage_mat[:, 13] = sub_mat[:, (blockIdx().y - 1) * blockDim().y + threadIdx().y]
+#     # storage_mat[:, 14] = not_prime_mat[:, (blockIdx().x - 1) * blockDim().x + threadIdx().x]
+#     # storage_mat[:, 15] = not_sub_mat[:, (blockIdx().y - 1) * blockDim().y + threadIdx().y]
 
-#     sum_p = sum(prime_var)
-    # sum_s = sum(sub_var)
-#     storage_arr[1] = sum(prime_mat[:, index_x])
-    storage_arr[out_index, 1] = 0.0
-    for k in 1:size(prime_mat)[1]
-        storage_arr[out_index, 1] += prime_mat[k, index_x]
-    end
-    # storage_arr[2] = sum(sub_mat[:, index_y])
-    storage_arr[out_index, 2] = 0.0
-    for k in 1:size(sub_mat)[1]
-        storage_arr[out_index, 2] += sub_mat[k, index_y]
-    end
+# #     sum_p = sum(prime_var)
+#     # sum_s = sum(sub_var)
+# #     storage_arr[1] = sum(prime_mat[:, index_x])
+#     storage_arr[out_index, 1] = 0.0
+#     for k in 1:size(prime_mat)[1]
+#         storage_arr[out_index, 1] += prime_mat[k, index_x]
+#     end
+#     # storage_arr[2] = sum(sub_mat[:, index_y])
+#     storage_arr[out_index, 2] = 0.0
+#     for k in 1:size(sub_mat)[1]
+#         storage_arr[out_index, 2] += sub_mat[k, index_y]
+#     end
 
-#     px = (sum_p + 2.0 * α) / (N + 4.0 * α)
-    # # py = (sum_s + 2.0 * α) / (N + 4.0 * α)
-    # # p_notx = (N - sum_p + 2.0 * α) / (N + 4.0 * α)
-    # # p_noty = (N - sum_s + 2.0 * α) / (N + 4.0 * α)
-    storage_arr[out_index, 3] = (storage_arr[out_index, 1] + 2.0 * α) / (N + 4.0 * α)
-    storage_arr[out_index, 4] = (storage_arr[out_index, 2] + 2.0 * α) / (N + 4.0 * α)
-    storage_arr[out_index, 5] = (N - storage_arr[out_index, 1] + 2.0 * α) / (N + 4.0 * α)
-    storage_arr[out_index, 6] = (N - storage_arr[out_index, 2] + 2.0 * α) / (N + 4.0 * α)
+# #     px = (sum_p + 2.0 * α) / (N + 4.0 * α)
+#     # # py = (sum_s + 2.0 * α) / (N + 4.0 * α)
+#     # # p_notx = (N - sum_p + 2.0 * α) / (N + 4.0 * α)
+#     # # p_noty = (N - sum_s + 2.0 * α) / (N + 4.0 * α)
+#     storage_arr[out_index, 3] = (storage_arr[out_index, 1] + 2.0 * α) / (N + 4.0 * α)
+#     storage_arr[out_index, 4] = (storage_arr[out_index, 2] + 2.0 * α) / (N + 4.0 * α)
+#     storage_arr[out_index, 5] = (N - storage_arr[out_index, 1] + 2.0 * α) / (N + 4.0 * α)
+#     storage_arr[out_index, 6] = (N - storage_arr[out_index, 2] + 2.0 * α) / (N + 4.0 * α)
     
     
-    # # p_x_y = (prime_var' * sub_var + α) / (N + 4.0 * α)
-    # # p_notx_y = (not_prime_var' * sub_var + α) / (N + 4.0 * α)
-    # # p_x_noty = (prime_var' * not_sub_var + α) / (N + 4.0 * α)
-    # # p_notx_noty = (not_prime_var' * not_sub_var + α) / (N + 4.0 * α)
-    # # storage_arr[7] = (storage_arr[12]' * storage_arr[13] + α) / (N + 4.0 * α)
-    # # storage_arr[8] = (storage_arr[14]' * storage_arr[13] + α) / (N + 4.0 * α)
-    # # storage_arr[9] = (storage_arr[12]' * storage_arr[15] + α) / (N + 4.0 * α)
-    # # storage_arr[10] = (storage_arr[14]' * storage_arr[15] + α) / (N + 4.0 * α)
-    storage_arr[out_index, 7] = 0.0
-    for k in 1:N
-        storage_arr[out_index, 7] += (prime_mat[k, index_x] * sub_mat[k, index_y])
-    end
-    storage_arr[out_index, 7] = (storage_arr[out_index, 7] + α) / (N + 4.0 * α)
+#     # # p_x_y = (prime_var' * sub_var + α) / (N + 4.0 * α)
+#     # # p_notx_y = (not_prime_var' * sub_var + α) / (N + 4.0 * α)
+#     # # p_x_noty = (prime_var' * not_sub_var + α) / (N + 4.0 * α)
+#     # # p_notx_noty = (not_prime_var' * not_sub_var + α) / (N + 4.0 * α)
+#     # # storage_arr[7] = (storage_arr[12]' * storage_arr[13] + α) / (N + 4.0 * α)
+#     # # storage_arr[8] = (storage_arr[14]' * storage_arr[13] + α) / (N + 4.0 * α)
+#     # # storage_arr[9] = (storage_arr[12]' * storage_arr[15] + α) / (N + 4.0 * α)
+#     # # storage_arr[10] = (storage_arr[14]' * storage_arr[15] + α) / (N + 4.0 * α)
+#     storage_arr[out_index, 7] = 0.0
+#     for k in 1:N
+#         storage_arr[out_index, 7] += (prime_mat[k, index_x] & sub_mat[k, index_y])
+#     end
+#     storage_arr[out_index, 7] = (storage_arr[out_index, 7] + α) / (N + 4.0 * α)
     
-    storage_arr[out_index, 8] = 0.0
-    for k in 1:N
-        storage_arr[out_index, 8] += (not_prime_mat[k, index_x] * sub_mat[k, index_y])
-    end
-    storage_arr[out_index, 8] = (storage_arr[out_index, 8] + α) / (N + 4.0 * α)
+#     storage_arr[out_index, 8] = 0.0
+#     for k in 1:N
+#         storage_arr[out_index, 8] += (not_prime_mat[k, index_x] & sub_mat[k, index_y])
+#     end
+#     storage_arr[out_index, 8] = (storage_arr[out_index, 8] + α) / (N + 4.0 * α)
     
-    storage_arr[out_index, 9] = 0.0
-    for k in 1:N
-        storage_arr[out_index, 9] += (prime_mat[k, index_x] * not_sub_mat[k, index_y])
-    end
-    storage_arr[out_index, 9] = (storage_arr[out_index, 9] + α) / (N + 4.0 * α)
+#     storage_arr[out_index, 9] = 0.0
+#     for k in 1:N
+#         storage_arr[out_index, 9] += (prime_mat[k, index_x] & not_sub_mat[k, index_y])
+#     end
+#     storage_arr[out_index, 9] = (storage_arr[out_index, 9] + α) / (N + 4.0 * α)
     
-    storage_arr[out_index, 10] = 0.0
-    for k in 1:N
-        storage_arr[out_index, 10] += (not_prime_mat[k, index_x] * not_sub_mat[k, index_y])
-    end
-    storage_arr[out_index, 10] = (storage_arr[out_index, 10] + α) / (N + 4.0 * α)
+#     storage_arr[out_index, 10] = 0.0
+#     for k in 1:N
+#         storage_arr[out_index, 10] += (not_prime_mat[k, index_x] & not_sub_mat[k, index_y])
+#     end
+#     storage_arr[out_index, 10] = (storage_arr[out_index, 10] + α) / (N + 4.0 * α)
     
-    # storage_arr[7] = (prime_mat[:, index_x]' * sub_mat[:, index_y] + α) / (N + 4.0 * α)
-    # storage_arr[8] = (not_prime_mat[:, index_x]' * sub_mat[:, index_y] + α) / (N + 4.0 * α)
-    # storage_arr[9] = (prime_mat[:, index_x]' * not_sub_mat[:, index_y] + α) / (N + 4.0 * α)
-    # storage_arr[10] = (not_prime_mat[:, index_x]' * not_sub_mat[:, index_y] + α) / (N + 4.0 * α)
+#     # storage_arr[7] = (prime_mat[:, index_x]' * sub_mat[:, index_y] + α) / (N + 4.0 * α)
+#     # storage_arr[8] = (not_prime_mat[:, index_x]' * sub_mat[:, index_y] + α) / (N + 4.0 * α)
+#     # storage_arr[9] = (prime_mat[:, index_x]' * not_sub_mat[:, index_y] + α) / (N + 4.0 * α)
+#     # storage_arr[10] = (not_prime_mat[:, index_x]' * not_sub_mat[:, index_y] + α) / (N + 4.0 * α)
 
-    storage_arr[out_index, 11] = 0.0
-    # # storage_arr[11] += (p_x_y * CUDA.log((p_x_y)/(p_x * p_y)))
-    # # storage_arr[11] += (p_notx_y * CUDA.log((p_notx_y)/(p_notx * p_y)))
-    # # storage_arr[11] += (p_x_noty * CUDA.log((p_x_noty)/(p_x * p_noty)))
-    # # storage_arr[11] += (p_notx_noty * CUDA.log((p_notx_noty)/(p_notx * p_noty)))
-    storage_arr[out_index, 11] += (storage_arr[out_index, 7] * CUDA.log((storage_arr[out_index, 7])/(storage_arr[out_index, 3] * storage_arr[out_index, 4] + 1e-6) + 1e-6))
-    storage_arr[out_index, 11] += (storage_arr[out_index, 8] * CUDA.log((storage_arr[out_index, 8])/(storage_arr[out_index, 5] * storage_arr[out_index, 4] + 1e-6) + 1e-6))
-    storage_arr[out_index, 11] += (storage_arr[out_index, 9] * CUDA.log((storage_arr[out_index, 9])/(storage_arr[out_index, 3] * storage_arr[out_index, 6] + 1e-6) + 1e-6))
-    storage_arr[out_index, 11] += (storage_arr[out_index, 10] * CUDA.log((storage_arr[out_index, 10])/(storage_arr[out_index, 5] * storage_arr[out_index, 6] + 1e-6) + 1e-6))
+#     storage_arr[out_index, 11] = 0.0
+      # storage_arr[11] += (p_x_y * CUDA.log((p_x_y)/(p_x * p_y)))
+      # storage_arr[11] += (p_notx_y * CUDA.log((p_notx_y)/(p_notx * p_y)))
+      # storage_arr[11] += (p_x_noty * CUDA.log((p_x_noty)/(p_x * p_noty)))
+      # storage_arr[11] += (p_notx_noty * CUDA.log((p_notx_noty)/(p_notx * p_noty)))
+#     storage_arr[out_index, 11] += (storage_arr[out_index, 7] * CUDA.log((storage_arr[out_index, 7])/(storage_arr[out_index, 3] * storage_arr[out_index, 4] + 1e-6) + 1e-6))
+#     storage_arr[out_index, 11] += (storage_arr[out_index, 8] * CUDA.log((storage_arr[out_index, 8])/(storage_arr[out_index, 5] * storage_arr[out_index, 4] + 1e-6) + 1e-6))
+#     storage_arr[out_index, 11] += (storage_arr[out_index, 9] * CUDA.log((storage_arr[out_index, 9])/(storage_arr[out_index, 3] * storage_arr[out_index, 6] + 1e-6) + 1e-6))
+#     storage_arr[out_index, 11] += (storage_arr[out_index, 10] * CUDA.log((storage_arr[out_index, 10])/(storage_arr[out_index, 5] * storage_arr[out_index, 6] + 1e-6) + 1e-6))
+    
+    pMI_vec[out_index] = 0.0
+    pMI_vec[out_index] += (p_s[index_x, index_y] * CUDA.log((p_s[index_x, index_y])/(p_marginal[index_x] * s_marginal[index_y])))
+    pMI_vec[out_index] += (notp_s[index_x, index_y] * CUDA.log((notp_s[index_x, index_y])/((1.0 - p_marginal[index_x]) * s_marginal[index_y])))
+    pMI_vec[out_index] += (p_nots[index_x, index_y] * CUDA.log((p_nots[index_x, index_y])/(p_marginal[index_x] * (1.0 - s_marginal[index_y]))))
+    pMI_vec[out_index] += (notp_nots[index_x, index_y] * CUDA.log((notp_nots[index_x, index_y])/((1.0 - p_marginal[index_x]) * (1.0 - s_marginal[index_y]))))
+    # pMI_vec[out_index] += (p_notx_y * CUDA.log((p_notx_y)/(p_notx * p_y)))
+    # pMI_vec[out_index] += (p_x_noty * CUDA.log((p_x_noty)/(p_x * p_noty)))
+    # pMI_vec[out_index] += (p_notx_noty * CUDA.log((p_notx_noty)/(p_notx * p_noty)))
 
-    pMI_vec[out_index] = storage_arr[out_index, 11]
+
+    # pMI_vec[out_index] = storage_arr[out_index, 11]
 #     pMI_vec[(index_y - 1)*num_sub_vars + index_x] = 0.0
     return nothing
 end
 
-function independenceMI_gpu_wrapper(mat, prime_lits, sub_lits, lit_map)
+function independenceMI_gpu_wrapper(mat, marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
     mapped_primes = [lit_map[p] for p in prime_lits]
     mapped_subs = [lit_map[s] for s in sub_lits]
-    prime_mat = mat[:, Var.(mapped_primes)]
-    sub_mat = mat[:, Var.(mapped_subs)]
 
-    num_prime_vars = size(prime_mat)[2]
-    num_sub_vars = size(sub_mat)[2]
+    num_prime_vars = length(mapped_primes)
+    num_sub_vars = length(mapped_subs)
 
     pMI_vec = to_gpu(zeros(num_prime_vars * num_sub_vars))
 
     num_threads = (16, 16)
     num_blocks = (ceil(Int, num_prime_vars/16), ceil(Int, num_sub_vars/16))
+
+    α = 1.0
+    N = size(mat)[1]
+    p_marginal = marginals[Var.(mapped_primes)]
+    s_marginal = marginals[Var.(mapped_subs)]
+
+    p_s = d_d[Var.(mapped_primes), Var.(mapped_subs)]
+    p_nots = d_nd[Var.(mapped_primes), Var.(mapped_subs)]
+    notp_s = collect(d_nd[Var.(mapped_subs), Var.(mapped_primes)]')
+    notp_nots = nd_nd[Var.(mapped_primes), Var.(mapped_subs)]
+
+
+
+
+
+
+
+
     # Data Type Conversions #
-    prime_gpu = to_gpu(convert(Matrix, prime_mat))
+    # prime_gpu = to_gpu(convert(Matrix, prime_mat))
     # println("PrimeGPU : $(sum(prime_gpu)) :: $(size(prime_mat)) :: $(typeof(prime_mat))")
-    sub_gpu = to_gpu(convert(Matrix, sub_mat))
+    # sub_gpu = to_gpu(convert(Matrix, sub_mat))
     # println("PrimeGPU : $(sum(prime_gpu)) :: $(size(prime_gpu)) :: $(typeof(prime_gpu))")
     # println("***********************")
-    not_prime_gpu = to_gpu(convert(Matrix, .!(prime_mat)))
-    not_sub_gpu = to_gpu(convert(Matrix, .!(sub_mat)))
-    storage_arr = to_gpu(Array{Float64}(undef, num_prime_vars*num_sub_vars, 15))
+    # not_prime_gpu = to_gpu(convert(Matrix, .!(prime_mat)))
+    # not_sub_gpu = to_gpu(convert(Matrix, .!(sub_mat)))
+    # storage_arr = to_gpu(Array{Float64}(undef, num_prime_vars*num_sub_vars, 15))
 
-    @cuda threads=num_threads blocks=num_blocks independenceMI_gpu(prime_gpu, sub_gpu, 
-                                                not_prime_gpu, not_sub_gpu, pMI_vec,
-                                                storage_arr, size(prime_mat)[2], size(sub_mat)[2],
-                                                size(prime_mat)[1], 1.0)
+    @cuda threads=num_threads blocks=num_blocks independenceMI_gpu(to_gpu(p_marginal), to_gpu(s_marginal),
+                                                to_gpu(p_s), to_gpu(p_nots), to_gpu(notp_s), to_gpu(notp_nots),
+                                                pMI_vec,
+                                                # storage_arr, 
+                                                num_prime_vars, num_sub_vars)
 
     
     # println(pMI_vec)
@@ -203,7 +232,7 @@ function independenceMI_gpu_wrapper(mat, prime_lits, sub_lits, lit_map)
     return cpu_pMI
 end
 
-function independenceMI(mat, prime_lits, sub_lits, lit_map)
+function independenceMI(mat, marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
         # score = 0.0
         # t0 = Base.time_ns()
         # (_, mi) = mutual_information(mat, nothing; α=1.0)
@@ -221,17 +250,29 @@ function independenceMI(mat, prime_lits, sub_lits, lit_map)
         # score = sum(mi[mapped_primes, mapped_subs])
 
         # return score
-        return independenceMI_gpu_wrapper(mat, prime_lits, sub_lits, lit_map)
+        return independenceMI_gpu_wrapper(mat, marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
 end
 
 
 function ind_prime_sub(values, flows, candidates::Vector{Tuple{Node, Node}}, scope, data_matrix)
+    dmat = BitArray(convert(Matrix, data_matrix))
+    d_d = dmat' * dmat
+    d_nd = dmat' * (.!(dmat))
+    nd_nd = (.!(dmat))' * (.!(dmat))
+
+    N = size(data_matrix)[1]
+    α = 1.0
+    d_d = (d_d .+ (4.0 * α)) ./ (N + 4.0 * α)
+    d_nd = (d_nd .+ (4.0 * α)) ./ (N + 4.0 * α)
+    nd_nd = (nd_nd .+ (4.0 * α)) ./ (N + 4.0 * α)
+    marginals = (dropdims(count(dmat, dims=1), dims=1) .+ (2.0 * α)) ./ (N + 4.0 * α)
+
     min_score = Inf
     or0 = nothing
     and0 = nothing
     var0 = nothing
 
-    for (or, and) in candidates
+    for (i, (or, and)) in enumerate(candidates)
         og_lits = collect(Set{Lit}(scope[and])) # All literals
         # On which you can split
         lits = sort(collect(intersect(filter(l -> l > 0, og_lits), - collect(filter(l -> l < 0, og_lits)))))
@@ -260,7 +301,7 @@ function ind_prime_sub(values, flows, candidates::Vector{Tuple{Node, Node}}, sco
 
         stotal = 0.0
         t0 = Base.time_ns()
-        stotal = independenceMI(data_matrix[examples_id, prime_sub_vars], prime_lits, sub_lits, lit_map)
+        stotal = independenceMI_gpu_wrapper(dmat[examples_id, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
         t1 = Base.time_ns()
         # println("First Ind Cal : $((t1 - t0)/1.0e9)")
 
@@ -276,8 +317,9 @@ function ind_prime_sub(values, flows, candidates::Vector{Tuple{Node, Node}}, sco
             # println(prime_sub_lits)
             # println("Var : $var")
             # println("----------------")
-            println(length(candidates))
-            println(length(lits))
+            # println(length(candidates))
+            # println(length(lits))
+            # println(i)
 
             pos_scope = examples_id .& data_matrix[:, var]
             neg_scope = examples_id .& (.!(pos_scope))
@@ -286,18 +328,18 @@ function ind_prime_sub(values, flows, candidates::Vector{Tuple{Node, Node}}, sco
 
             t0 = Base.time_ns()
             if sum(pos_scope) > 0
-                s1 = independenceMI(data_matrix[pos_scope, prime_sub_vars], prime_lits, sub_lits, lit_map)
+                s1 = independenceMI_gpu_wrapper(dmat[pos_scope, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
             end
             t1 = Base.time_ns()
-            println("Second Ind Cal : $((t1 - t0)/1.0e9)")
+            # println("Second Ind Cal : $((t1 - t0)/1.0e9)")
             # println("Pos Scope : $(sum(pos_scope))")
 
             t0 = Base.time_ns()
             if sum(neg_scope) > 0
-                s2 = independenceMI(data_matrix[neg_scope, prime_sub_vars], prime_lits, sub_lits, lit_map)
+                s2 = independenceMI_gpu_wrapper(dmat[neg_scope, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
             end
             t1 = Base.time_ns()
-            println("Third Ind Cal : $((t1 - t0)/1.0e9)")
+            # println("Third Ind Cal : $((t1 - t0)/1.0e9)")
             # println("Neg Scope : $(sum(neg_scope))")
 
             s = s1 + s2

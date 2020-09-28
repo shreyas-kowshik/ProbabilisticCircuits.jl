@@ -5,7 +5,7 @@ using Random
 """
 Learn structure decomposable circuits
 """
-function learn_single_model(train_x;
+function learn_single_model(train_x, valid_x, test_x;
         pick_edge="eFlow", pick_var="vMI", depth=1, 
         pseudocount=1.0,
         sanity_check=true,
@@ -28,7 +28,12 @@ function learn_single_model(train_x;
     iter = 0
     log_per_iter(circuit) = begin
         ll = EVI(circuit, train_x)
-        println("Log likelihood of iteration $iter is $(mean(ll))")
+        println("Train Log likelihood of iteration $iter is $(mean(ll))")
+        ll = EVI(circuit, valid_x)
+        println("Validation Log likelihood of iteration $iter is $(mean(ll))")
+        ll = EVI(circuit, test_x)
+        println("Test Log likelihood of iteration $iter is $(mean(ll))")
+        println("Circuit Size : $(num_nodes(circuit))")
         println()
         iter += 1
         false
