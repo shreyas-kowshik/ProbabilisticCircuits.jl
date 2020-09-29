@@ -13,7 +13,7 @@ Learn faithful structured decomposable circuits
 OPTS = (
     DEFAULT_LOG_OPT=Dict("valid_x"=>nothing, "test_x"=>nothing, "outdir"=>"", "save"=>1, "print"=>""),
     DEFAULT_SPECIFIC_OPT=Dict("CPT"=>nothing))
-TRAIN_HEADER = ["epoch", "time", "total_time", "circuit_size", "train_ll", "valid_ll", "test_ll", "MI", "var"]
+TRAIN_HEADER = ["epoch", "time", "total_time", "circuit_size", "train_ll", "valid_ll", "test_ll", "MI", "var", "primitive"]
 EM_HEADER = ["iter", "time", "total_time", "train_ll", "valid_ll", "test_ll"]
 
 
@@ -59,7 +59,7 @@ end
 """
 Every log step
 """
-function log_per_iter(pc, data, results; opts, time=missing, epoch=nothing, save_csv=true,
+function log_per_iter(pc, data, results; opts, vtree=nothing, time=missing, epoch=nothing, save_csv=true,
         var=missing, mi=missing, save_freq=500, savecircuit=true)
     # from kwargs
     if !isdir(opts["outdir"])
@@ -96,12 +96,19 @@ function log_per_iter(pc, data, results; opts, time=missing, epoch=nothing, save
     valid_ll = missing
     if issomething(opts["valid_x"])
         valid_ll = EVI(pc, opts["valid_x"])
+
+        # Save best circuit
+        if mean(valid_ll) >= maximum(results["valid_ll"])
+            save_as_psdd(joinpath(opts["outdir"], "progress/best.psdd"))
+        end
+
         println("Valid-LL : $(mean(valid_ll))")
         push!(results["valid_ll"], mean(valid_ll))
     else
         push!(results["valid_ll"], missing)
     end
     test_ll = missing
+
     if issomething(opts["test_x"])
         test_ll = EVI(pc, opts["test_x"])
         println("Test-:: : $(mean(test_ll))")
@@ -122,6 +129,11 @@ function log_per_iter(pc, data, results; opts, time=missing, epoch=nothing, save
         if issomething(opts["test_x"])
             push!(ys, "test_ll")
         end
+    end
+
+    # Save circuit
+    if epoch % save_freq == 0
+        save_as_psdd(joinpath(opts["outdir"], "progress/latest.psdd"))
     end
 
     println("****************************************")
@@ -149,14 +161,14 @@ function learn_single_model(train_x, valid_x, test_x;
         results = log_init(opts=log_opts)
         toc = Base.time_ns()
         log_per_iter(pc, train_x, results;
-        opts=log_opts, epoch=0, time=(toc-tic)/1.0e9)
+        opts=log_opts, vtree=vtree, epoch=0, time=(toc-tic)/1.0e9)
     end
 
     
 
     # structure_update
     # loss(circuit) = heuristic_loss(circuit, train_x; pick_edge=pick_edge, pick_var=pick_var)
-    loss(circuit) = ind_loss(circuit, train_x)
+    loss(circuit) = ind_loss_split(circuit, train_x)
     pc_split_step(circuit) = begin
         c::ProbCircuit, = split_step(circuit; loss=loss, depth=depth, sanity_check=sanity_check)
         estimate_parameters(c, train_x; pseudocount=pseudocount)
@@ -165,18 +177,10 @@ function learn_single_model(train_x, valid_x, test_x;
     
     iter = 0
     log_per_iter_inline(circuit) = begin
-        # ll = EVI(circuit, train_x)
-        # println("Train Log likelihood of iteration $iter is $(mean(ll))")
-        # ll = EVI(circuit, valid_x)
-        # println("Validation Log likelihood of iteration $iter is $(mean(ll))")
-        # ll = EVI(circuit, test_x)
-        # println("Test Log likelihood of iteration $iter is $(mean(ll))")
-        # println("Circuit Size : $(num_nodes(circuit))")
-        # println()
         if issomething(log_opts)
             toc = Base.time_ns()
             log_per_iter(circuit, train_x, results;
-            opts=log_opts, epoch=iter, time=(toc-tic)/1.0e9)
+            opts=log_opts, vtree=vtree, epoch=iter, time=(toc-tic)/1.0e9)
         end
         iter += 1
         false

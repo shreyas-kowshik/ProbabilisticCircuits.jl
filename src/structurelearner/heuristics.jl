@@ -286,8 +286,6 @@ function ind_prime_sub(values, flows, candidates::Vector{Tuple{Node, Node}}, sco
         
         prime_sub_lits = sort([prime_lits..., sub_lits...])
         
-
-        # @assert sort(og_lits) == prime_sub_lits "Literals do not match"
         @assert length(prime_lits) > 0 "Prime litset empty"
         @assert length(sub_lits) > 0 "Sub litset empty"
         prime_sub_vars = Var.(prime_sub_lits)
@@ -310,17 +308,6 @@ function ind_prime_sub(values, flows, candidates::Vector{Tuple{Node, Node}}, sco
         end
 
         for var in lits
-            # println(og_lits)
-            # println(prime_lits)
-            # println(sub_lits)
-            # println(lits)
-            # println(prime_sub_lits)
-            # println("Var : $var")
-            # println("----------------")
-            # println(length(candidates))
-            # println(length(lits))
-            # println(i)
-
             pos_scope = examples_id .& data_matrix[:, var]
             neg_scope = examples_id .& (.!(pos_scope))
             s1 = 0.0
@@ -344,15 +331,6 @@ function ind_prime_sub(values, flows, candidates::Vector{Tuple{Node, Node}}, sco
 
             s = s1 + s2
 
-            # if stotal != 0 && s == 0
-            #     min_score = s
-            #     or0 = or
-            #     and0 = and
-            #     var0 = var
-            #     return min_score, Var.(var0), (or0, and0)
-            # end
-
-            # println("Score : $s")
 
             if s < min_score
                 min_score = s
@@ -366,8 +344,97 @@ function ind_prime_sub(values, flows, candidates::Vector{Tuple{Node, Node}}, sco
     return min_score, Var.(var0), (or0, and0)
 end
 
+function ind_clone(values, flows, candidates::Vector{Tuple{Node, Node, Node}}, scope, data_matrix)
+    dmat = BitArray(convert(Matrix, data_matrix))
+    d_d = dmat' * dmat
+    d_nd = dmat' * (.!(dmat))
+    nd_nd = (.!(dmat))' * (.!(dmat))
 
-function ind_loss(circuit::LogicCircuit, train_x)
+    N = size(data_matrix)[1]
+    α = 1.0
+    d_d = (d_d .+ (4.0 * α)) ./ (N + 4.0 * α)
+    d_nd = (d_nd .+ (4.0 * α)) ./ (N + 4.0 * α)
+    nd_nd = (nd_nd .+ (4.0 * α)) ./ (N + 4.0 * α)
+    marginals = (dropdims(count(dmat, dims=1), dims=1) .+ (2.0 * α)) ./ (N + 4.0 * α)
+
+    min_score = Inf
+    or0 = nothing
+    and0 = nothing
+    var0 = nothing
+
+    for (i, (and1, and2, or)) in enumerate(candidates)
+        og_lits = collect(Set{Lit}(scope[and])) # All literals
+        # On which you can split
+        lits = sort(collect(intersect(filter(l -> l > 0, og_lits), - collect(filter(l -> l < 0, og_lits)))))
+        # lit_map = Dict(l => i for (i, l) in enumerate(lits))
+        vars = Var.(lits)
+
+        prime_lits = sort([abs(l) for l in og_lits if l in scope[children(and)[1]]])
+        sub_lits = sort([abs(l) for l in og_lits if l in scope[children(and)[2]]])
+        prime_lits = collect(Set{Lit}(prime_lits))
+        sub_lits = collect(Set{Lit}(sub_lits))
+        
+        prime_sub_lits = sort([prime_lits..., sub_lits...])
+        
+        @assert length(prime_lits) > 0 "Prime litset empty"
+        @assert length(sub_lits) > 0 "Sub litset empty"
+        prime_sub_vars = Var.(prime_sub_lits)
+        lit_map = Dict(l => i for (i, l) in enumerate(prime_sub_lits))
+
+        examples_id = downflow_all(values, flows, or, and)[1:num_examples(data_matrix)]
+
+        if(sum(examples_id) == 0)
+            continue
+        end
+
+        stotal = 0.0
+        t0 = Base.time_ns()
+        stotal = independenceMI_gpu_wrapper(dmat[examples_id, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
+        t1 = Base.time_ns()
+        # println("First Ind Cal : $((t1 - t0)/1.0e9)")
+
+        if stotal == 0.0
+            continue
+        end
+
+        for var in lits
+            pos_scope = examples_id .& data_matrix[:, var]
+            neg_scope = examples_id .& (.!(pos_scope))
+            s1 = 0.0
+            s2 = 0.0
+
+            t0 = Base.time_ns()
+            if sum(pos_scope) > 0
+                s1 = independenceMI_gpu_wrapper(dmat[pos_scope, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
+            end
+            t1 = Base.time_ns()
+            # println("Second Ind Cal : $((t1 - t0)/1.0e9)")
+            # println("Pos Scope : $(sum(pos_scope))")
+
+            t0 = Base.time_ns()
+            if sum(neg_scope) > 0
+                s2 = independenceMI_gpu_wrapper(dmat[neg_scope, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
+            end
+            t1 = Base.time_ns()
+            # println("Third Ind Cal : $((t1 - t0)/1.0e9)")
+            # println("Neg Scope : $(sum(neg_scope))")
+
+            s = s1 + s2
+
+
+            if s < min_score
+                min_score = s
+                or0 = or
+                and0 = and
+                var0 = var
+            end
+        end
+    end
+
+    return min_score, Var.(var0), (or0, and0)
+end
+
+function ind_loss_split(circuit::LogicCircuit, train_x)
     candidates, scope = split_candidates(circuit)
     values, flows = satisfies_flows(circuit, train_x)
 
@@ -375,6 +442,14 @@ function ind_loss(circuit::LogicCircuit, train_x)
     return (or, and), Var(var)
 end
 
+function ind_loss_clone(circuit::LogicCircuit, train_x)
+    _, scope = split_candidates(circuit)
+    candidates = clone_candidates(circuit)
+    values, flows = satisfies_flows(circuit, train_x)
+
+    score, var, (or, and) = ind_clone(values, flows, candidates, scope, train_x)
+    return (or, and), Var(var)
+end
 
 function heuristic_loss(circuit::LogicCircuit, train_x; pick_edge="eFlow", pick_var="vMI")
     candidates, scope = split_candidates(circuit)
