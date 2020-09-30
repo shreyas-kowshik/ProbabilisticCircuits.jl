@@ -81,6 +81,13 @@ function log_per_iter(pc, data, results; opts, vtree=nothing, time=missing, epoc
     push!(results["MI"], mi)
     push!(results["time"], time)
     push!(results["circuit_size"], num_nodes(pc))
+
+    if epoch % 2 == 0
+        push!(results["primitive"], "clone")
+    else
+        push!(results["primitive"], "split")
+    end
+
     if length(results["total_time"]) == 0
         push!(results["total_time"], time)
     else
@@ -98,8 +105,10 @@ function log_per_iter(pc, data, results; opts, vtree=nothing, time=missing, epoc
         valid_ll = EVI(pc, opts["valid_x"])
 
         # Save best circuit
-        if mean(valid_ll) >= maximum(results["valid_ll"])
-            save_as_psdd(joinpath(opts["outdir"], "progress/best.psdd"))
+        if length(results["valid_ll"]) > 0
+            if mean(valid_ll) >= maximum(results["valid_ll"])
+                save_as_psdd(joinpath(opts["outdir"], "progress/best.psdd"), pc, vtree)
+            end
         end
 
         println("Valid-LL : $(mean(valid_ll))")
@@ -133,7 +142,7 @@ function log_per_iter(pc, data, results; opts, vtree=nothing, time=missing, epoc
 
     # Save circuit
     if epoch % save_freq == 0
-        save_as_psdd(joinpath(opts["outdir"], "progress/latest.psdd"))
+        save_as_psdd(joinpath(opts["outdir"], "progress/latest.psdd"), pc, vtree)
     end
 
     println("****************************************")
@@ -168,9 +177,17 @@ function learn_single_model(train_x, valid_x, test_x;
 
     # structure_update
     # loss(circuit) = heuristic_loss(circuit, train_x; pick_edge=pick_edge, pick_var=pick_var)
-    loss(circuit) = ind_loss_split(circuit, train_x)
+    loss_split(circuit) = ind_loss_split(circuit, train_x)
+    loss_clone(circuit) = ind_loss_clone(circuit, train_x)
+
     pc_split_step(circuit) = begin
-        c::ProbCircuit, = split_step(circuit; loss=loss, depth=depth, sanity_check=sanity_check)
+        c::ProbCircuit, = split_step(circuit; loss=loss_split, depth=depth, sanity_check=sanity_check)
+        estimate_parameters(c, train_x; pseudocount=pseudocount)
+        return c, missing
+    end
+
+    pc_clone_step(circuit) = begin
+        c::ProbCircuit, = clone_step(circuit; loss=loss_clone, depth=depth, sanity_check=sanity_check)
         estimate_parameters(c, train_x; pseudocount=pseudocount)
         return c, missing
     end
@@ -188,6 +205,6 @@ function learn_single_model(train_x, valid_x, test_x;
 
     log_per_iter_inline(pc)
     pc = struct_learn(pc; 
-        primitives=[pc_split_step], kwargs=Dict(pc_split_step=>()), 
+        primitives=[pc_split_step, pc_clone_step], kwargs=Dict(pc_split_step=>(), pc_clone_step=>()),
         maxiter=maxiter, stop=log_per_iter_inline)
 end

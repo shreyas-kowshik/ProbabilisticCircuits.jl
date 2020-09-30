@@ -32,6 +32,40 @@ function downflow_all(values::Matrix{UInt64}, flows::Matrix{UInt64}, n::LogicCir
     vcat(edge...)
 end
 
+function clone_downflow_all(values::Matrix{UInt64}, flows::Matrix{UInt64}, n::LogicCircuit, a1::LogicCircuit, a2::LogicCircuit)
+    or = n.data.node_id
+    p1 = a1.prime.data.node_id
+    s1 = a1.sub.data.node_id
+    p2 = a2.prime.data.node_id
+    s2 = a2.sub.data.node_id
+
+    edge1 = map(1:size(flows,1)) do i
+        and1_downflow = (values[i, p1] & values[i, s1] & flows[i, or])
+        # and2_downflow = (values[i, p2] & values[i, s2] & flows[i, or])
+        # or_rem = flows[i, or] & (!and2_downflow) & (!and2_downflow)
+
+        digits(Bool, and1_downflow, base=2, pad=64)
+    end
+
+    edge2 = map(1:size(flows,1)) do i
+        # and1_downflow = (values[i, p1] & values[i, s1] & flows[i, or])
+        and2_downflow = (values[i, p2] & values[i, s2] & flows[i, or])
+        # or_rem = flows[i, or] & (!and2_downflow) & (!and2_downflow)
+
+        digits(Bool, and2_downflow, base=2, pad=64)
+    end
+
+    edge3 = map(1:size(flows,1)) do i
+        # and1_downflow = (values[i, p1] & values[i, s1] & flows[i, or])
+        # and2_downflow = (values[i, p2] & values[i, s2] & flows[i, or])
+        # or_rem = flows[i, or] & (!and2_downflow) & (!and2_downflow)
+
+        digits(Bool, flows[i, or], base=2, pad=64)
+    end
+
+    vcat(edge1...), vcat(edge2...), vcat(edge3...)
+end
+
 function eFlow(values, flows, candidates::Vector{Tuple{Node, Node}})
     edge2flows = map(candidates) do (or, and)
         count_downflow(values, flows, or, and)
@@ -276,7 +310,6 @@ function ind_prime_sub(values, flows, candidates::Vector{Tuple{Node, Node}}, sco
         og_lits = collect(Set{Lit}(scope[and])) # All literals
         # On which you can split
         lits = sort(collect(intersect(filter(l -> l > 0, og_lits), - collect(filter(l -> l < 0, og_lits)))))
-        # lit_map = Dict(l => i for (i, l) in enumerate(lits))
         vars = Var.(lits)
 
         prime_lits = sort([abs(l) for l in og_lits if l in scope[children(and)[1]]])
@@ -298,10 +331,7 @@ function ind_prime_sub(values, flows, candidates::Vector{Tuple{Node, Node}}, sco
         end
 
         stotal = 0.0
-        t0 = Base.time_ns()
         stotal = independenceMI_gpu_wrapper(dmat[examples_id, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
-        t1 = Base.time_ns()
-        # println("First Ind Cal : $((t1 - t0)/1.0e9)")
 
         if stotal == 0.0
             continue
@@ -313,25 +343,14 @@ function ind_prime_sub(values, flows, candidates::Vector{Tuple{Node, Node}}, sco
             s1 = 0.0
             s2 = 0.0
 
-            t0 = Base.time_ns()
             if sum(pos_scope) > 0
                 s1 = independenceMI_gpu_wrapper(dmat[pos_scope, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
             end
-            t1 = Base.time_ns()
-            # println("Second Ind Cal : $((t1 - t0)/1.0e9)")
-            # println("Pos Scope : $(sum(pos_scope))")
-
-            t0 = Base.time_ns()
             if sum(neg_scope) > 0
                 s2 = independenceMI_gpu_wrapper(dmat[neg_scope, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
             end
-            t1 = Base.time_ns()
-            # println("Third Ind Cal : $((t1 - t0)/1.0e9)")
-            # println("Neg Scope : $(sum(neg_scope))")
 
             s = s1 + s2
-
-
             if s < min_score
                 min_score = s
                 or0 = or
@@ -359,18 +378,24 @@ function ind_clone(values, flows, candidates::Vector{Tuple{Node, Node, Node}}, s
 
     min_score = Inf
     or0 = nothing
-    and0 = nothing
-    var0 = nothing
+    and00 = nothing
+    and01 = nothing
 
-    for (i, (and1, and2, or)) in enumerate(candidates)
-        og_lits = collect(Set{Lit}(scope[and])) # All literals
+    for (i, (or, and1, and2)) in enumerate(candidates)
+        check_arr = [is⋀gate(ch) for ch in children(or)]
+        if sum(check_arr) == 0
+            continue
+        end
+
+        and_child = children(or)[1]
+        og_lits = collect(Set{Lit}(scope[and_child])) # All literals
         # On which you can split
         lits = sort(collect(intersect(filter(l -> l > 0, og_lits), - collect(filter(l -> l < 0, og_lits)))))
         # lit_map = Dict(l => i for (i, l) in enumerate(lits))
         vars = Var.(lits)
 
-        prime_lits = sort([abs(l) for l in og_lits if l in scope[children(and)[1]]])
-        sub_lits = sort([abs(l) for l in og_lits if l in scope[children(and)[2]]])
+        prime_lits = sort([abs(l) for l in og_lits if l in scope[children(and_child)[1]]])
+        sub_lits = sort([abs(l) for l in og_lits if l in scope[children(and_child)[2]]])
         prime_lits = collect(Set{Lit}(prime_lits))
         sub_lits = collect(Set{Lit}(sub_lits))
         
@@ -381,57 +406,60 @@ function ind_clone(values, flows, candidates::Vector{Tuple{Node, Node, Node}}, s
         prime_sub_vars = Var.(prime_sub_lits)
         lit_map = Dict(l => i for (i, l) in enumerate(prime_sub_lits))
 
-        examples_id = downflow_all(values, flows, or, and)[1:num_examples(data_matrix)]
+        and1_downflow, and2_downflow, or_downflow = clone_downflow_all(values, flows, or, and1, and2)
+        and1_downflow = and1_downflow[1:num_examples(data_matrix)]
+        and2_downflow = and2_downflow[1:num_examples(data_matrix)]
+        or_downflow = or_downflow[1:num_examples(data_matrix)]
+
+        examples_id = or_downflow
+        or_rem_downflow = or_downflow .& (.!and1_downflow) .& (.!and2_downflow)
+        examples_id1 = and1_downflow .| or_rem_downflow
+        examples_id2 = and2_downflow .| or_rem_downflow
+
+
+        # examples_id1 = examples_id1[1:num_examples(data_matrix)]
+        # examples_id2 = examples_id2[1:num_examples(data_matrix)]
+        # examples_id = examples_id1 | examples_id2
 
         if(sum(examples_id) == 0)
             continue
         end
 
         stotal = 0.0
-        t0 = Base.time_ns()
-        stotal = independenceMI_gpu_wrapper(dmat[examples_id, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
-        t1 = Base.time_ns()
-        # println("First Ind Cal : $((t1 - t0)/1.0e9)")
+        cur_score = 0.0
+
+        for and in children(or)
+            # Check independence scores
+            examples_and = map(1:size(flows,1)) do i
+                digits(Bool, values[i, and.prime.data.node_id] & values[i, and.sub.data.node_id], base=2, pad=64)
+            end
+            examples_and = vcat(examples_and...)[1:num_examples(data_matrix)]
+
+            ex_and_before = examples_id .& examples_and
+            ex_and1 = examples_id1 .& examples_and
+            ex_and2 = examples_id2 .& examples_and
+
+            sbefore = independenceMI_gpu_wrapper(dmat[ex_and_before, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
+            s1 = independenceMI_gpu_wrapper(dmat[ex_and1, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
+            s2 = independenceMI_gpu_wrapper(dmat[ex_and2, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
+
+            stotal += sbefore
+            cur_score += (s1 + s2)
+        end
 
         if stotal == 0.0
             continue
         end
 
-        for var in lits
-            pos_scope = examples_id .& data_matrix[:, var]
-            neg_scope = examples_id .& (.!(pos_scope))
-            s1 = 0.0
-            s2 = 0.0
-
-            t0 = Base.time_ns()
-            if sum(pos_scope) > 0
-                s1 = independenceMI_gpu_wrapper(dmat[pos_scope, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
-            end
-            t1 = Base.time_ns()
-            # println("Second Ind Cal : $((t1 - t0)/1.0e9)")
-            # println("Pos Scope : $(sum(pos_scope))")
-
-            t0 = Base.time_ns()
-            if sum(neg_scope) > 0
-                s2 = independenceMI_gpu_wrapper(dmat[neg_scope, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
-            end
-            t1 = Base.time_ns()
-            # println("Third Ind Cal : $((t1 - t0)/1.0e9)")
-            # println("Neg Scope : $(sum(neg_scope))")
-
-            s = s1 + s2
-
-
-            if s < min_score
-                min_score = s
-                or0 = or
-                and0 = and
-                var0 = var
-            end
+        if cur_score < min_score
+            min_score = cur_score
+            or0 = or
+            and00 = and1
+            and01 = and2
         end
     end
 
-    return min_score, Var.(var0), (or0, and0)
+    return min_score, or0, and00, and01
 end
 
 function ind_loss_split(circuit::LogicCircuit, train_x)
@@ -447,8 +475,8 @@ function ind_loss_clone(circuit::LogicCircuit, train_x)
     candidates = clone_candidates(circuit)
     values, flows = satisfies_flows(circuit, train_x)
 
-    score, var, (or, and) = ind_clone(values, flows, candidates, scope, train_x)
-    return (or, and), Var(var)
+    score, or, and1, and2 = ind_clone(values, flows, candidates, scope, train_x)
+    return or, and1, and2
 end
 
 function heuristic_loss(circuit::LogicCircuit, train_x; pick_edge="eFlow", pick_var="vMI")
