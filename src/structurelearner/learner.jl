@@ -84,8 +84,7 @@ function log_per_iter(pc, data, results; opts, vtree=nothing, time=missing, epoc
 
     
     if epoch % 2 == 0
-        # push!(results["primitive"], "clone")
-	push!(results["primitive"], "split")
+        push!(results["primitive"], "clone")
     else
         push!(results["primitive"], "split")
     end
@@ -190,7 +189,7 @@ function learn_single_model(train_x, valid_x, test_x;
     end
 
     pc_clone_step(circuit) = begin
-        c::ProbCircuit, = clone_step(circuit; loss=loss_clone, depth=depth, sanity_check=sanity_check)
+        c::ProbCircuit = clone_step(circuit; loss=loss_clone, depth=depth, sanity_check=sanity_check)
         estimate_parameters(c, train_x; pseudocount=pseudocount)
         return c, missing
     end

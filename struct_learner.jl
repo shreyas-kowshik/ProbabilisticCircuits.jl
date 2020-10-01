@@ -25,7 +25,7 @@ println("Starting Structure Learning...")
 outdir = string(BASE_PATH, parsed_args["name"])
 
 
-train_x, valid_x, test_x = twenty_datasets(parse_args["name"])
+train_x, valid_x, test_x = twenty_datasets(parsed_args["name"])
 
 pc = learn_single_model(train_x, valid_x, test_x;
                    log_opts=Dict("outdir"=>outdir, "save"=>1))
