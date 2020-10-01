@@ -82,8 +82,10 @@ function log_per_iter(pc, data, results; opts, vtree=nothing, time=missing, epoc
     push!(results["time"], time)
     push!(results["circuit_size"], num_nodes(pc))
 
+    
     if epoch % 2 == 0
-        push!(results["primitive"], "clone")
+        # push!(results["primitive"], "clone")
+	push!(results["primitive"], "split")
     else
         push!(results["primitive"], "split")
     end
@@ -97,6 +99,7 @@ function log_per_iter(pc, data, results; opts, vtree=nothing, time=missing, epoc
 
     println("*****************Results****************")
     # ll
+    println("Size : $(num_nodes(pc))")
     train_ll = ll = EVI(pc, opts["train_x"])
     println("Train-LL : $(mean(train_ll))")
     push!(results["train_ll"], mean(train_ll))

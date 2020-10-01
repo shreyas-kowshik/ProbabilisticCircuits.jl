@@ -12,3 +12,5 @@
 *Manifest.toml
 docs/build/
 scratch/
+*.toml
+Project.toml
