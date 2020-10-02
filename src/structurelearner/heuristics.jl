@@ -338,6 +338,7 @@ function ind_prime_sub(values, flows, candidates::Vector{Tuple{Node, Node}}, sco
     and0 = nothing
     var0 = nothing
 
+    tvar0 = Base.time_ns()
     for (i, (or, and)) in enumerate(candidates)
         og_lits = collect(Set{Lit}(scope[and])) # All literals
         # On which you can split
@@ -369,35 +370,62 @@ function ind_prime_sub(values, flows, candidates::Vector{Tuple{Node, Node}}, sco
             continue
         end
 
-        for var in lits
-            t0 = Base.time_ns()
-            pos_scope = examples_id .& data_matrix[:, var]
-            neg_scope = examples_id .& (.!(pos_scope))
-            @assert sum(examples_id) == (sum(pos_scope) + sum(neg_scope)) "Scopes do not add up"
-            s1 = 0.0
-            s2 = 0.0
+        res = zeros(length(lits))
 
-            if sum(pos_scope) > 0
-                s1 = independenceMI_gpu_wrapper(dmat[pos_scope, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
-            end
-            if sum(neg_scope) > 0
-                s2 = independenceMI_gpu_wrapper(dmat[neg_scope, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
-            end
+        
+        T = Threads.nthreads()
+        # println("Threads : $T")
 
-            s = s1 + s2
-            t1 = Base.time_ns()
-            # println("i:$i / $(length(candidates)), One Check Time : $((t1 - t0)/1.0e9)")
+        Threads.@threads for t=1:T
+            # println("t : $t :: $(length(lits))")
+            for j=t:T:length(lits)
+                # println("t : $t, j : $j :: $(length(lits))")
+                var = lits[j]
+                t0 = Base.time_ns()
+                pos_scope = examples_id .& data_matrix[:, var]
+                neg_scope = examples_id .& (.!(pos_scope))
+                @assert sum(examples_id) == (sum(pos_scope) + sum(neg_scope)) "Scopes do not add up"
+                s1 = Inf
+                s2 = Inf
 
-            # println("i: $i, var:$var, pos_scope : $(sum(pos_scope)), neg_scope : $(sum(neg_scope)), stotal : $stotal, s : $s")
+                if sum(pos_scope) > 0
+                    s1 = independenceMI_gpu_wrapper(dmat[pos_scope, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
+                end
+                if sum(neg_scope) > 0
+                    s2 = independenceMI_gpu_wrapper(dmat[neg_scope, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
+                end
 
-            if s < min_score
-                min_score = s
-                or0 = or
-                and0 = and
-                var0 = var
+                s = s1 + s2
+                t1 = Base.time_ns()
+                # println("i:$i / $(length(candidates)), One Check Time : $((t1 - t0)/1.0e9)")
+
+                # println("i: $i, var:$var, pos_scope : $(sum(pos_scope)), neg_scope : $(sum(neg_scope)), stotal : $stotal, s : $s")
+
+                res[j] = s
+                # if s < min_score
+                #     min_score = s
+                #     or0 = or
+                #     and0 = and
+                #     var0 = var
+                # end
             end
         end
+
+        idx = argmin(res)
+        s = res[idx]
+        var = lits[idx]
+
+        if s < min_score
+            min_score = s
+            or0 = or
+            and0 = and
+            var0 = var
+        end
+
     end
+
+    tvar1 = Base.time_ns()
+    println("Looping Time : $((tvar1 - tvar0)/1.0e9)")
 
     return min_score, Var.(var0), (or0, and0)
 end
@@ -500,6 +528,31 @@ function ind_clone(values, flows, candidates::Vector{Tuple{Node, Node, Node}}, s
 
     return min_score, or0, and00, and01
 end
+
+
+
+
+
+
+"""
+Kernel, each thread performs one candidate operation
+"""
+function ind_prime_sub2()
+
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 function ind_loss_split(circuit::LogicCircuit, train_x)
     candidates, scope = split_candidates(circuit)
