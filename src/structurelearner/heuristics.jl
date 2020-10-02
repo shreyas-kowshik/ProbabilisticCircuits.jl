@@ -572,7 +572,7 @@ function ind_loss_clone(circuit::LogicCircuit, train_x)
     values, flows = satisfies_flows(circuit, train_x)
 
     score, or, and1, and2 = ind_clone(values, flows, candidates, scope, train_x)
-    return or, and1, and2
+    return score, or, and1, and2
 end
 
 function heuristic_loss(circuit::LogicCircuit, train_x; pick_edge="eFlow", pick_var="vMI")

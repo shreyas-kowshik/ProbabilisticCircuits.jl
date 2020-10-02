@@ -180,6 +180,7 @@ function learn_single_model(train_x, valid_x, test_x;
 
     split_score_val = 0.0
     clone_score_val = 0.0
+    score_val = 0.0
     var = -1
     ckt_size = -1
 
@@ -192,13 +193,15 @@ function learn_single_model(train_x, valid_x, test_x;
         # c::ProbCircuit, _, split_score_val
         tup, split_score_val, var, ckt_size = split_step(circuit; loss=loss_split, depth=depth, sanity_check=sanity_check)
         c = tup[1]
-        # println(tup)
+        score_val = split_score_val
         estimate_parameters(c, train_x; pseudocount=pseudocount)
         return c, missing
     end
 
     pc_clone_step(circuit) = begin
-        c::ProbCircuit = clone_step(circuit; loss=loss_clone, depth=depth, sanity_check=sanity_check)
+        c, clone_score_val, ckt_size = clone_step(circuit; loss=loss_clone, depth=depth, sanity_check=sanity_check)
+        var = -1
+        score_val = clone_score_val
         estimate_parameters(c, train_x; pseudocount=pseudocount)
         return c, missing
     end
@@ -208,7 +211,7 @@ function learn_single_model(train_x, valid_x, test_x;
         if issomething(log_opts)
             toc = Base.time_ns()
             log_per_iter(circuit, train_x, results;
-            opts=log_opts, vtree=vtree, epoch=iter, time=(toc-tic)/1.0e9, mi=split_score_val,
+            opts=log_opts, vtree=vtree, epoch=iter, time=(toc-tic)/1.0e9, mi=score_val,
             var=var, ckt_size=ckt_size)
         end
         iter += 1
