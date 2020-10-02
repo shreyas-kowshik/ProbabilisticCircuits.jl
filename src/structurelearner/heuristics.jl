@@ -215,7 +215,7 @@ function independenceMI_gpu(p_marginal, s_marginal, p_s, notp_s, p_nots, notp_no
     return nothing
 end
 
-function independenceMI_gpu_wrapper(mat, marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
+function independenceMI_gpu_wrapper(dmat, marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
     mapped_primes = [lit_map[p] for p in prime_lits]
     mapped_subs = [lit_map[s] for s in sub_lits]
 
@@ -228,7 +228,38 @@ function independenceMI_gpu_wrapper(mat, marginals, d_d, d_nd, nd_nd, prime_lits
     num_blocks = (ceil(Int, num_prime_vars/16), ceil(Int, num_sub_vars/16))
 
     α = 1.0
-    N = size(mat)[1]
+    N = size(dmat)[1]
+
+    # t0 = Base.time_ns()
+    # d_d = dmat' * dmat
+    # d_nd = dmat' * (.!(dmat))
+    # nd_nd = (.!(dmat))' * (.!(dmat))
+    # t1 = Base.time_ns()
+    # println("T0 : $((t1 - t0)/1.0e9)")
+
+    # t0 = Base.time_ns()
+    dummy = ones(num_prime_vars+num_sub_vars,num_prime_vars+num_sub_vars)
+    d_d = cu(similar(dummy))
+    d_nd = cu(similar(dummy))
+    nd_nd = cu(similar(dummy))
+    dmat_gpu = cu(dmat)
+    dmat_tr_gpu = cu(collect(dmat'))
+    not_dmat_gpu = cu(.!(dmat))
+    not_dmat_tr_gpu = cu(collect((.!(dmat))'))
+
+    mul!(d_d, dmat_tr_gpu, dmat_gpu)
+    mul!(d_nd, dmat_tr_gpu, not_dmat_gpu)
+    mul!(nd_nd, not_dmat_tr_gpu, not_dmat_gpu)
+    # t1 = Base.time_ns()
+    # println("T1 : $((t1 - t0)/1.0e9)")
+
+    d_d = (d_d .+ (4.0 * α)) ./ (N + 4.0 * α)
+    d_nd = (d_nd .+ (4.0 * α)) ./ (N + 4.0 * α)
+    nd_nd = (nd_nd .+ (4.0 * α)) ./ (N + 4.0 * α)
+    marginals = (dropdims(count(dmat, dims=1), dims=1) .+ (2.0 * α)) ./ (N + 4.0 * α)
+
+
+
     p_marginal = marginals[Var.(mapped_primes)]
     s_marginal = marginals[Var.(mapped_subs)]
 
@@ -255,7 +286,7 @@ function independenceMI_gpu_wrapper(mat, marginals, d_d, d_nd, nd_nd, prime_lits
     # storage_arr = to_gpu(Array{Float64}(undef, num_prime_vars*num_sub_vars, 15))
 
     @cuda threads=num_threads blocks=num_blocks independenceMI_gpu(to_gpu(p_marginal), to_gpu(s_marginal),
-                                                to_gpu(p_s), to_gpu(p_nots), to_gpu(notp_s), to_gpu(notp_nots),
+                                                p_s, p_nots, to_gpu(notp_s), notp_nots,
                                                 pMI_vec,
                                                 # storage_arr, 
                                                 num_prime_vars, num_sub_vars)
@@ -296,6 +327,7 @@ function ind_prime_sub(values, flows, candidates::Vector{Tuple{Node, Node}}, sco
 
     N = size(data_matrix)[1]
     α = 1.0
+
     d_d = (d_d .+ (4.0 * α)) ./ (N + 4.0 * α)
     d_nd = (d_nd .+ (4.0 * α)) ./ (N + 4.0 * α)
     nd_nd = (nd_nd .+ (4.0 * α)) ./ (N + 4.0 * α)
@@ -314,8 +346,8 @@ function ind_prime_sub(values, flows, candidates::Vector{Tuple{Node, Node}}, sco
 
         prime_lits = sort([abs(l) for l in og_lits if l in scope[children(and)[1]]])
         sub_lits = sort([abs(l) for l in og_lits if l in scope[children(and)[2]]])
-        prime_lits = collect(Set{Lit}(prime_lits))
-        sub_lits = collect(Set{Lit}(sub_lits))
+        prime_lits = sort(collect(Set{Lit}(prime_lits)))
+        sub_lits = sort(collect(Set{Lit}(sub_lits)))
         
         prime_sub_lits = sort([prime_lits..., sub_lits...])
         
@@ -338,8 +370,10 @@ function ind_prime_sub(values, flows, candidates::Vector{Tuple{Node, Node}}, sco
         end
 
         for var in lits
+            t0 = Base.time_ns()
             pos_scope = examples_id .& data_matrix[:, var]
             neg_scope = examples_id .& (.!(pos_scope))
+            @assert sum(examples_id) == (sum(pos_scope) + sum(neg_scope)) "Scopes do not add up"
             s1 = 0.0
             s2 = 0.0
 
@@ -351,6 +385,11 @@ function ind_prime_sub(values, flows, candidates::Vector{Tuple{Node, Node}}, sco
             end
 
             s = s1 + s2
+            t1 = Base.time_ns()
+            # println("i:$i / $(length(candidates)), One Check Time : $((t1 - t0)/1.0e9)")
+
+            # println("i: $i, var:$var, pos_scope : $(sum(pos_scope)), neg_scope : $(sum(neg_scope)), stotal : $stotal, s : $s")
+
             if s < min_score
                 min_score = s
                 or0 = or
@@ -467,7 +506,7 @@ function ind_loss_split(circuit::LogicCircuit, train_x)
     values, flows = satisfies_flows(circuit, train_x)
 
     score, var, (or, and) = ind_prime_sub(values, flows, candidates, scope, train_x)
-    return (or, and), Var(var)
+    return score, (or, and), Var(var)
 end
 
 function ind_loss_clone(circuit::LogicCircuit, train_x)
