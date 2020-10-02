@@ -370,6 +370,10 @@ function ind_prime_sub(values, flows, candidates::Vector{Tuple{Node, Node}}, sco
             continue
         end
 
+        if(length(lits) == 0)
+            continue
+        end
+
         res = zeros(length(lits))
 
         
