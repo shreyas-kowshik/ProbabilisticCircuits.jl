@@ -456,6 +456,9 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
 
                 # println("S : $s")
                 # res[j] = s
+
+		s = s - stotal
+
                 if s < min_score
                     min_score = s
                     or0 = or
@@ -578,6 +581,7 @@ function ind_clone(values, flows, candidates::Vector{Tuple{Node, Node, Node}}, s
             continue
         end
 
+	cur_score = cur_score - stotal
         if cur_score < min_score
             min_score = cur_score
             or0 = or
