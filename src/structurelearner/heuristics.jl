@@ -319,7 +319,7 @@ function independenceMI(mat, marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, 
 end
 
 
-function ind_prime_sub(values, flows, candidates::Vector{Tuple{Node, Node}}, scope, data_matrix)
+function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}}, scope, data_matrix)
     dmat = BitArray(convert(Matrix, data_matrix))
     d_d = dmat' * dmat
     d_nd = dmat' * (.!(dmat))
@@ -338,51 +338,92 @@ function ind_prime_sub(values, flows, candidates::Vector{Tuple{Node, Node}}, sco
     and0 = nothing
     var0 = nothing
 
+
+    # Choose one layer to reduce computation #
+    bc = BitCircuit(pc, data_matrix)
+    id2layer = Dict()
+    cands = []
+    for (i, layer) in enumerate(bc.layers)
+        for id in layer
+            id2layer[id] = i
+        end
+    end
+
+    layered_cands = Vector{Vector{Tuple{Node, Node}}}(undef, length(bc.layers))
+    for i in 1:length(layered_cands)
+        layered_cands[i] = []
+    end
+
+    for (or, and) in candidates
+        push!(layered_cands[id2layer[or.data.node_id]], (or, and))
+    end
+
+    # candidates = rand(layered_cands)
+    # println(layered_cands)
+    layered_cands = filter(x->length(x) > 0, layered_cands)
+    # println(length(layered_cands))
+    # layer_id = 1
+    
+    # candidates = rand(layered_cands)
+    ##########################################
+
+
     tvar0 = Base.time_ns()
-    for (i, (or, and)) in enumerate(candidates)
-        og_lits = collect(Set{Lit}(scope[and])) # All literals
-        # On which you can split
-        lits = sort(collect(intersect(filter(l -> l > 0, og_lits), - collect(filter(l -> l < 0, og_lits)))))
-        vars = Var.(lits)
 
-        prime_lits = sort([abs(l) for l in og_lits if l in scope[children(and)[1]]])
-        sub_lits = sort([abs(l) for l in og_lits if l in scope[children(and)[2]]])
-        prime_lits = sort(collect(Set{Lit}(prime_lits)))
-        sub_lits = sort(collect(Set{Lit}(sub_lits)))
-        
-        prime_sub_lits = sort([prime_lits..., sub_lits...])
-        
-        @assert length(prime_lits) > 0 "Prime litset empty"
-        @assert length(sub_lits) > 0 "Sub litset empty"
-        prime_sub_vars = Var.(prime_sub_lits)
-        lit_map = Dict(l => i for (i, l) in enumerate(prime_sub_lits))
-
-        examples_id = downflow_all(values, flows, or, and)[1:num_examples(data_matrix)]
-
-        if(sum(examples_id) == 0)
-            continue
+    done = false
+    for layer_id in 1:length(layered_cands)
+        if done == true
+            break
         end
 
-        stotal = 0.0
-        stotal = independenceMI_gpu_wrapper(dmat[examples_id, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
+        candidates = layered_cands[layer_id]
 
-        if stotal == 0.0
-            continue
-        end
+        for (i, (or, and)) in enumerate(candidates)
+            og_lits = collect(Set{Lit}(scope[and])) # All literals
+            # On which you can split
+            lits = sort(collect(intersect(filter(l -> l > 0, og_lits), - collect(filter(l -> l < 0, og_lits)))))
+            vars = Var.(lits)
 
-        if(length(lits) == 0)
-            continue
-        end
+            prime_lits = sort([abs(l) for l in og_lits if l in scope[children(and)[1]]])
+            sub_lits = sort([abs(l) for l in og_lits if l in scope[children(and)[2]]])
+            prime_lits = sort(collect(Set{Lit}(prime_lits)))
+            sub_lits = sort(collect(Set{Lit}(sub_lits)))
+            
+            prime_sub_lits = sort([prime_lits..., sub_lits...])
+            
+            @assert length(prime_lits) > 0 "Prime litset empty"
+            @assert length(sub_lits) > 0 "Sub litset empty"
+            prime_sub_vars = Var.(prime_sub_lits)
+            lit_map = Dict(l => i for (i, l) in enumerate(prime_sub_lits))
 
-        res = zeros(length(lits))
+            examples_id = downflow_all(values, flows, or, and)[1:num_examples(data_matrix)]
 
-        
-        T = Threads.nthreads()
-        # println("Threads : $T")
+            if(sum(examples_id) == 0)
+                continue
+            end
 
-        Threads.@threads for t=1:T
+            stotal = 0.0
+            stotal = independenceMI_gpu_wrapper(dmat[examples_id, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
+
+            if stotal == 0.0
+                # println("Already faithful")
+                continue
+            end
+
+            if(length(lits) == 0)
+                # println("No Variales")
+                continue
+            end
+
+            res = zeros(length(lits))
+
+            
+            # T = Threads.nthreads()
+            # println("Threads : $T")
+
+            # Threads.@threads for t=1:T
             # println("t : $t :: $(length(lits))")
-            for j=t:T:length(lits)
+            for j=1:length(lits)
                 # println("t : $t, j : $j :: $(length(lits))")
                 var = lits[j]
                 t0 = Base.time_ns()
@@ -399,37 +440,52 @@ function ind_prime_sub(values, flows, candidates::Vector{Tuple{Node, Node}}, sco
                     s2 = independenceMI_gpu_wrapper(dmat[neg_scope, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
                 end
 
-                s = s1 + s2
+                s = 0.0
+                if s1 == Inf
+                    s = s2
+                elseif s2 == Inf
+                    s = s1
+                else
+                    s = s1 + s2
+                end
+
                 t1 = Base.time_ns()
                 # println("i:$i / $(length(candidates)), One Check Time : $((t1 - t0)/1.0e9)")
 
                 # println("i: $i, var:$var, pos_scope : $(sum(pos_scope)), neg_scope : $(sum(neg_scope)), stotal : $stotal, s : $s")
 
-                res[j] = s
-                # if s < min_score
-                #     min_score = s
-                #     or0 = or
-                #     and0 = and
-                #     var0 = var
-                # end
+                # println("S : $s")
+                # res[j] = s
+                if s < min_score
+                    min_score = s
+                    or0 = or
+                    and0 = and
+                    var0 = var
+                    done=true
+                end
             end
+
+
+            # idx = argmin(res)
+            # s = res[idx]
+            # var = lits[idx]
+
+            # if s < min_score
+            #     min_score = s
+            #     or0 = or
+            #     and0 = and
+            #     var0 = var
+            # end
+
         end
-
-        idx = argmin(res)
-        s = res[idx]
-        var = lits[idx]
-
-        if s < min_score
-            min_score = s
-            or0 = or
-            and0 = and
-            var0 = var
-        end
-
     end
 
     tvar1 = Base.time_ns()
     println("Looping Time : $((tvar1 - tvar0)/1.0e9)")
+
+    if or0 == nothing || and0 == nothing || var0 == nothing
+        return -1, nothing, nothing, nothing
+    end
 
     return min_score, Var.(var0), (or0, and0)
 end
@@ -562,7 +618,7 @@ function ind_loss_split(circuit::LogicCircuit, train_x)
     candidates, scope = split_candidates(circuit)
     values, flows = satisfies_flows(circuit, train_x)
 
-    score, var, (or, and) = ind_prime_sub(values, flows, candidates, scope, train_x)
+    score, var, (or, and) = ind_prime_sub(circuit, values, flows, candidates, scope, train_x)
     return score, (or, and), Var(var)
 end
 
