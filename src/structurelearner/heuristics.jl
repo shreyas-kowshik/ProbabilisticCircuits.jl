@@ -104,7 +104,7 @@ function vRand(vars::Vector{Var})
     return Var(rand(vars))
 end
 
-function independenceMI_gpu(p_marginal, s_marginal, p_s, notp_s, p_nots, notp_nots, 
+function independenceMI_gpu(marginals, p_s, notp_s, p_nots, notp_nots, 
                             pMI_vec, 
                             # storage_arr,
                             num_prime_vars, num_sub_vars)
@@ -200,11 +200,21 @@ function independenceMI_gpu(p_marginal, s_marginal, p_s, notp_s, p_nots, notp_no
 #     storage_arr[out_index, 11] += (storage_arr[out_index, 9] * CUDA.log((storage_arr[out_index, 9])/(storage_arr[out_index, 3] * storage_arr[out_index, 6] + 1e-6) + 1e-6))
 #     storage_arr[out_index, 11] += (storage_arr[out_index, 10] * CUDA.log((storage_arr[out_index, 10])/(storage_arr[out_index, 5] * storage_arr[out_index, 6] + 1e-6) + 1e-6))
     
-    pMI_vec[out_index] = 0.0
-    pMI_vec[out_index] += (p_s[index_x, index_y] * CUDA.log((p_s[index_x, index_y])/(p_marginal[index_x] * s_marginal[index_y])))
-    pMI_vec[out_index] += (notp_s[index_x, index_y] * CUDA.log((notp_s[index_x, index_y])/((1.0 - p_marginal[index_x]) * s_marginal[index_y])))
-    pMI_vec[out_index] += (p_nots[index_x, index_y] * CUDA.log((p_nots[index_x, index_y])/(p_marginal[index_x] * (1.0 - s_marginal[index_y]))))
-    pMI_vec[out_index] += (notp_nots[index_x, index_y] * CUDA.log((notp_nots[index_x, index_y])/((1.0 - p_marginal[index_x]) * (1.0 - s_marginal[index_y]))))
+    pMI_vec[index_x, index_y] = 0.0
+
+    if index_x == index_y
+        return nothing
+    end
+
+    pMI_vec[index_x, index_y] += (p_s[index_x, index_y] * CUDA.log((p_s[index_x, index_y])/(marginals[index_x] * marginals[index_y] + 1e-13) + 1e-13))
+    pMI_vec[index_x, index_y] += (notp_s[index_x, index_y] * CUDA.log((notp_s[index_x, index_y])/((1.0 - marginals[index_x]) * marginals[index_y] + 1e-13) + 1e-13))
+    pMI_vec[index_x, index_y] += (p_nots[index_x, index_y] * CUDA.log((p_nots[index_x, index_y])/(marginals[index_x] * (1.0 - marginals[index_y]) + 1e-13) + 1e-13))
+    pMI_vec[index_x, index_y] += (notp_nots[index_x, index_y] * CUDA.log((notp_nots[index_x, index_y])/((1.0 - marginals[index_x]) * (1.0 - marginals[index_y]) + 1e-13) + 1e-13))
+
+    # pMI_vec[index_x, index_y] += (p_s[index_x, index_y] * CUDA.log((p_s[index_x, index_y])/(p_s[index_x, index_x] * p_s[index_y, index_y])))
+    # pMI_vec[index_x, index_y] += (notp_s[index_x, index_y] * CUDA.log((notp_s[index_x, index_y])/((1.0 - p_s[index_x, index_x]) * p_s[index_y, index_y])))
+    # pMI_vec[index_x, index_y] += (p_nots[index_x, index_y] * CUDA.log((p_nots[index_x, index_y])/(p_s[index_x, index_x] * (1.0 - p_s[index_y, index_y]))))
+    # pMI_vec[index_x, index_y] += (notp_nots[index_x, index_y] * CUDA.log((notp_nots[index_x, index_y])/((1.0 - p_s[index_x, index_x]) * (1.0 - p_s[index_y, index_y]))))
     # pMI_vec[out_index] += (p_notx_y * CUDA.log((p_notx_y)/(p_notx * p_y)))
     # pMI_vec[out_index] += (p_x_noty * CUDA.log((p_x_noty)/(p_x * p_noty)))
     # pMI_vec[out_index] += (p_notx_noty * CUDA.log((p_notx_noty)/(p_notx * p_noty)))
@@ -221,13 +231,14 @@ function independenceMI_gpu_wrapper(dmat, marginals, d_d, d_nd, nd_nd, prime_lit
 
     num_prime_vars = length(mapped_primes)
     num_sub_vars = length(mapped_subs)
+    num_vars = num_prime_vars + num_sub_vars
 
-    pMI_vec = to_gpu(zeros(num_prime_vars * num_sub_vars))
+    pMI_vec = to_gpu(zeros(num_vars, num_vars))
 
     num_threads = (16, 16)
-    num_blocks = (ceil(Int, num_prime_vars/16), ceil(Int, num_sub_vars/16))
+    num_blocks = (ceil(Int, num_vars/16), ceil(Int, num_vars/16))
 
-    α = 1.0
+    α = 0.0
     N = size(dmat)[1]
 
     # t0 = Base.time_ns()
@@ -250,6 +261,18 @@ function independenceMI_gpu_wrapper(dmat, marginals, d_d, d_nd, nd_nd, prime_lit
     mul!(d_d, dmat_tr_gpu, dmat_gpu)
     mul!(d_nd, dmat_tr_gpu, not_dmat_gpu)
     mul!(nd_nd, not_dmat_tr_gpu, not_dmat_gpu)
+
+
+
+    ########## DEBUG ############
+    println(d_d)
+    println(d_nd)
+    println(nd_nd)
+    println(N)
+
+    #############################
+
+
     # t1 = Base.time_ns()
     # println("T1 : $((t1 - t0)/1.0e9)")
 
@@ -258,15 +281,24 @@ function independenceMI_gpu_wrapper(dmat, marginals, d_d, d_nd, nd_nd, prime_lit
     nd_nd = (nd_nd .+ (4.0 * α)) ./ (N + 4.0 * α)
     marginals = (dropdims(count(dmat, dims=1), dims=1) .+ (2.0 * α)) ./ (N + 4.0 * α)
 
+    # println(d_d)
+    # println(d_nd)
+    # println(nd_nd)
+    # println(N)
+    # println(marginals)
 
+    # p_marginal = marginals[Var.(mapped_primes)]
+    # s_marginal = marginals[Var.(mapped_subs)]
 
-    p_marginal = marginals[Var.(mapped_primes)]
-    s_marginal = marginals[Var.(mapped_subs)]
+    # println("P_Marginal : $(d_d[1, 1])")
+    # println("S_Marginal : $(d_d[2, 2])")
 
-    p_s = d_d[Var.(mapped_primes), Var.(mapped_subs)]
-    p_nots = d_nd[Var.(mapped_primes), Var.(mapped_subs)]
-    notp_s = collect(d_nd[Var.(mapped_subs), Var.(mapped_primes)]')
-    notp_nots = nd_nd[Var.(mapped_primes), Var.(mapped_subs)]
+    # error("debug")
+
+    p_s = d_d
+    p_nots = d_nd
+    notp_s = collect(d_nd')
+    notp_nots = nd_nd
 
 
 
@@ -285,15 +317,23 @@ function independenceMI_gpu_wrapper(dmat, marginals, d_d, d_nd, nd_nd, prime_lit
     # not_sub_gpu = to_gpu(convert(Matrix, .!(sub_mat)))
     # storage_arr = to_gpu(Array{Float64}(undef, num_prime_vars*num_sub_vars, 15))
 
-    @cuda threads=num_threads blocks=num_blocks independenceMI_gpu(to_gpu(p_marginal), to_gpu(s_marginal),
-                                                p_s, p_nots, to_gpu(notp_s), notp_nots,
+    @cuda threads=num_threads blocks=num_blocks independenceMI_gpu(to_gpu(marginals),
+                                                p_s, to_gpu(notp_s), p_nots, notp_nots,
                                                 pMI_vec,
                                                 # storage_arr, 
-                                                num_prime_vars, num_sub_vars)
+                                                num_vars, num_vars)
 
     
     # println(pMI_vec)
-    cpu_pMI = sum(pMI_vec)
+    # cpu_pMI = CUDA.sum(pMI_vec)
+    cpu_pMI = to_cpu(pMI_vec)
+    println("Vars : $(num_prime_vars + num_sub_vars)")
+    println(cpu_pMI)
+    cpu_pMI = cpu_pMI[Var.(mapped_primes), Var.(mapped_subs)]
+    # println(cpu_pMI)
+    cpu_pMI = sum(cpu_pMI)
+    # println(cpu_pMI)
+    # println("-*-*-*-*-*-")
     return cpu_pMI
 end
 
@@ -334,6 +374,10 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
     marginals = (dropdims(count(dmat, dims=1), dims=1) .+ (2.0 * α)) ./ (N + 4.0 * α)
 
     min_score = Inf
+    min_s1 = Inf
+    min_s2 = Inf
+    min_s = Inf
+    num_vars = nothing
     or0 = nothing
     and0 = nothing
     var0 = nothing
@@ -403,6 +447,8 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
             end
 
             stotal = 0.0
+
+            println("---stotal---")
             stotal = independenceMI_gpu_wrapper(dmat[examples_id, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
 
             if stotal == 0.0
@@ -434,9 +480,11 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
                 s2 = Inf
 
                 if sum(pos_scope) > 0
+                    println("---s1---")
                     s1 = independenceMI_gpu_wrapper(dmat[pos_scope, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
                 end
                 if sum(neg_scope) > 0
+                    println("---s2---")
                     s2 = independenceMI_gpu_wrapper(dmat[neg_scope, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
                 end
 
@@ -454,10 +502,17 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
 
                 # println("i: $i, var:$var, pos_scope : $(sum(pos_scope)), neg_scope : $(sum(neg_scope)), stotal : $stotal, s : $s")
 
-                # println("S : $s")
                 # res[j] = s
 
-		s = s - stotal
+                # println("S : $s")
+                # println("stotal : $stotal")
+
+		        s = s - stotal
+
+                num_vars = length(prime_sub_lits)
+                s = s / (1.0 * num_vars)
+
+                
 
                 if s < min_score
                     min_score = s
@@ -465,6 +520,10 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
                     and0 = and
                     var0 = var
                     done=true
+
+                    min_s1 = s1 / (1.0 * num_vars)
+                    min_s2 = s2 / (1.0 * num_vars)
+                    min_s = stotal / (1.0 * num_vars)
                 end
             end
 
@@ -490,7 +549,7 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
         return -1, nothing, nothing, nothing
     end
 
-    return min_score, Var.(var0), (or0, and0)
+    return [min_score, min_s1, min_s2, min_s, num_vars] , Var.(var0), (or0, and0)
 end
 
 function ind_clone(values, flows, candidates::Vector{Tuple{Node, Node, Node}}, scope, data_matrix)
@@ -581,7 +640,7 @@ function ind_clone(values, flows, candidates::Vector{Tuple{Node, Node, Node}}, s
             continue
         end
 
-	cur_score = cur_score - stotal
+	    # cur_score = cur_score - stotal
         if cur_score < min_score
             min_score = cur_score
             or0 = or
@@ -593,37 +652,13 @@ function ind_clone(values, flows, candidates::Vector{Tuple{Node, Node, Node}}, s
     return min_score, or0, and00, and01
 end
 
-
-
-
-
-
-"""
-Kernel, each thread performs one candidate operation
-"""
-function ind_prime_sub2()
-
-end
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 function ind_loss_split(circuit::LogicCircuit, train_x)
     candidates, scope = split_candidates(circuit)
     values, flows = satisfies_flows(circuit, train_x)
 
-    score, var, (or, and) = ind_prime_sub(circuit, values, flows, candidates, scope, train_x)
-    return score, (or, and), Var(var)
+    info_arr, var, (or, and) = ind_prime_sub(circuit, values, flows, candidates, scope, train_x)
+
+    return info_arr, (or, and), Var(var)
 end
 
 function ind_loss_clone(circuit::LogicCircuit, train_x)
