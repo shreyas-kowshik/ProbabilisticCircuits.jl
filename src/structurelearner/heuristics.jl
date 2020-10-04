@@ -265,10 +265,10 @@ function independenceMI_gpu_wrapper(dmat, marginals, d_d, d_nd, nd_nd, prime_lit
 
 
     ########## DEBUG ############
-    println(d_d)
-    println(d_nd)
-    println(nd_nd)
-    println(N)
+    # println(d_d)
+    # println(d_nd)
+    # println(nd_nd)
+    # println(N)
 
     #############################
 
@@ -327,13 +327,18 @@ function independenceMI_gpu_wrapper(dmat, marginals, d_d, d_nd, nd_nd, prime_lit
     # println(pMI_vec)
     # cpu_pMI = CUDA.sum(pMI_vec)
     cpu_pMI = to_cpu(pMI_vec)
-    println("Vars : $(num_prime_vars + num_sub_vars)")
-    println(cpu_pMI)
+    # println("Vars : $(num_prime_vars + num_sub_vars)")
+    # println(cpu_pMI)
     cpu_pMI = cpu_pMI[Var.(mapped_primes), Var.(mapped_subs)]
     # println(cpu_pMI)
     cpu_pMI = sum(cpu_pMI)
     # println(cpu_pMI)
     # println("-*-*-*-*-*-")
+
+    if abs(cpu_pMI) < 1e-6
+        cpu_pMI = 0.0
+    end
+
     return cpu_pMI
 end
 
@@ -448,7 +453,7 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
 
             stotal = 0.0
 
-            println("---stotal---")
+            # println("---stotal---")
             stotal = independenceMI_gpu_wrapper(dmat[examples_id, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
 
             if stotal == 0.0
@@ -480,11 +485,11 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
                 s2 = Inf
 
                 if sum(pos_scope) > 0
-                    println("---s1---")
+                    # println("---s1---")
                     s1 = independenceMI_gpu_wrapper(dmat[pos_scope, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
                 end
                 if sum(neg_scope) > 0
-                    println("---s2---")
+                    # println("---s2---")
                     s2 = independenceMI_gpu_wrapper(dmat[neg_scope, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
                 end
 
@@ -507,7 +512,7 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
                 # println("S : $s")
                 # println("stotal : $stotal")
 
-		        s = s - stotal
+		        # s = s - stotal
 
                 num_vars = length(prime_sub_lits)
                 s = s / (1.0 * num_vars)
