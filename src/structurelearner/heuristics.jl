@@ -472,6 +472,10 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
     done = false
     layer_used = -1
 
+    sum_ex = -1
+    sum_pos = -1
+    sum_neg = -1
+
     for layer_id in 1:length(layered_cands)
         if done == true
             break
@@ -591,6 +595,10 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
                     min_s2 = s2 / (1.0 * num_vars)
                     min_s = stotal / (1.0 * num_vars)
 
+                    sum_ex = sum(examples_id)
+                    sum_pos = sum(pos_scope)
+                    sum_neg = sum(neg_scope)
+
                     layer_used = layer_id
                 end
             end
@@ -617,7 +625,7 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
         return -1, nothing, nothing, nothing
     end
 
-    return [min_score, min_s1, min_s2, min_s, num_vars, layer_used] , Var.(var0), (or0, and0)
+    return [min_score, min_s1, min_s2, min_s, num_vars, layer_used, sum_ex, sum_pos, sum_neg] , Var.(var0), (or0, and0)
 end
 
 function ind_clone(values, flows, candidates::Vector{Tuple{Node, Node, Node}}, scope, data_matrix)
