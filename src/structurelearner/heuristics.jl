@@ -331,7 +331,7 @@ function independenceMI_gpu_wrapper(dmat, marginals, d_d, d_nd, nd_nd, prime_lit
     # println(cpu_pMI)
     cpu_pMI = cpu_pMI[Var.(mapped_primes), Var.(mapped_subs)]
     # println(cpu_pMI)
-    cpu_pMI = sum(cpu_pMI)
+    cpu_pMI = mean(cpu_pMI)
     # println(cpu_pMI)
     # println("-*-*-*-*-*-")
 
@@ -580,7 +580,7 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
 		        # s = s - stotal
 
                 num_vars = length(prime_sub_lits)
-                s = s / (1.0 * num_vars)
+                # s = s / (1.0 * num_vars)
 
                 
 
@@ -591,9 +591,9 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
                     var0 = var
                     done=true
 
-                    min_s1 = s1 / (1.0 * num_vars)
-                    min_s2 = s2 / (1.0 * num_vars)
-                    min_s = stotal / (1.0 * num_vars)
+                    min_s1 = s1
+                    min_s2 = s2
+                    min_s = stotal
 
                     sum_ex = sum(examples_id)
                     sum_pos = sum(pos_scope)
