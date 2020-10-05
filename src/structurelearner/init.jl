@@ -71,6 +71,9 @@ function construct_children_linear(children_nodes::Vector{PlainVtree}, clt::CLT)
 end
 
 function construct_children_balanced(children_nodes::Vector{PlainVtree}, clt::CLT)::PlainVtree
+    println("BALANCED VTREE CONSTRUCTION!!!")
+
+
     if length(children_nodes) == 1
         return children_nodes[1]
     elseif length(children_nodes) == 2

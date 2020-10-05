@@ -335,7 +335,7 @@ function independenceMI_gpu_wrapper(dmat, marginals, d_d, d_nd, nd_nd, prime_lit
     # println(cpu_pMI)
     # println("-*-*-*-*-*-")
 
-    if abs(cpu_pMI) < 1e-6
+    if abs(cpu_pMI) < 1e-10
         cpu_pMI = 0.0
     end
 
@@ -376,15 +376,25 @@ function s_min(s1, s2)
     return s
 end
 
-function s_weighted(s1, s2)
+function s_min(s1, s2)
     s = 0.0
     if s1 == Inf
         s = s2
     elseif s2 == Inf
         s = s1
     else
-        w1 = s1 / (s1 + s2)
-        w2 = s2 / (s1 + s2)
+        s = sum(s1,s2)
+    end
+    return s
+end
+
+function s_weighted(s1, s2, w1, w2)
+    s = 0.0
+    if s1 == Inf
+        s = s2
+    elseif s2 == Inf
+        s = s1
+    else
         s = w1*s1 + s2*s2
     end
     return s
@@ -469,18 +479,22 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
 
         candidates = layered_cands[layer_id]
 
+
         for (i, (or, and)) in enumerate(candidates)
             og_lits = collect(Set{Lit}(scope[and])) # All literals
+
             # On which you can split
             lits = sort(collect(intersect(filter(l -> l > 0, og_lits), - collect(filter(l -> l < 0, og_lits)))))
             vars = Var.(lits)
 
             prime_lits = sort([abs(l) for l in og_lits if l in scope[children(and)[1]]])
             sub_lits = sort([abs(l) for l in og_lits if l in scope[children(and)[2]]])
+
             prime_lits = sort(collect(Set{Lit}(prime_lits)))
             sub_lits = sort(collect(Set{Lit}(sub_lits)))
-            
             prime_sub_lits = sort([prime_lits..., sub_lits...])
+
+            # println("Length of candidates : $(length(candidates)), layer_id : $layer_id, scope : $(length(prime_sub_lits))")
             
             @assert length(prime_lits) > 0 "Prime litset empty"
             @assert length(sub_lits) > 0 "Sub litset empty"
@@ -499,7 +513,7 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
             stotal = independenceMI_gpu_wrapper(dmat[examples_id, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
 
             if stotal == 0.0
-                # println("Already faithful")
+                # println("Already faithful!!!\n\n\n")
                 continue
             end
 
@@ -536,14 +550,17 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
                 end
 
                 s = 0.0
-                # if s1 == Inf
-                #     s = s2
-                # elseif s2 == Inf
-                #     s = s1
-                # else
-                #     s = s1 + s2
-                # end
-                s = s_max(s1, s2)
+                w1 = sum(pos_scope) * 1.0
+                w2 = sum(neg_scope) * 1.0
+                w = sum(examples_id) * 1.0
+
+                if s1 == Inf
+                    s = (s2/w2) - (stotal/w)
+                elseif s2 == Inf
+                    s = (s1/w1) - (stotal/w)
+                else
+                    s = (s1/w1) + (s2/w2) - (2.0*stotal/w)
+                end
 
                 t1 = Base.time_ns()
                 # println("i:$i / $(length(candidates)), One Check Time : $((t1 - t0)/1.0e9)")
@@ -552,7 +569,8 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
 
                 # res[j] = s
 
-                # println("S : $s")
+                # println("S1 : $s1")
+                # println("S2 : $s2")
                 # println("stotal : $stotal")
 
 		        # s = s - stotal
