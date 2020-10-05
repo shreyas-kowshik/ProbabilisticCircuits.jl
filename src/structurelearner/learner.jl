@@ -14,7 +14,7 @@ Learn faithful structured decomposable circuits
 OPTS = (
     DEFAULT_LOG_OPT=Dict("valid_x"=>nothing, "test_x"=>nothing, "outdir"=>"", "save"=>1, "print"=>""),
     DEFAULT_SPECIFIC_OPT=Dict("CPT"=>nothing))
-TRAIN_HEADER = ["epoch", "time", "total_time", "circuit_size", "train_ll", "valid_ll", "test_ll", "MI", "S1", "S2", "S", "num_vars", "var", "primitive", "ckt_size"]
+TRAIN_HEADER = ["epoch", "time", "total_time", "circuit_size", "train_ll", "valid_ll", "test_ll", "MI", "S1", "S2", "S", "num_vars", "var", "layer_used", "primitive", "ckt_size"]
 EM_HEADER = ["iter", "time", "total_time", "train_ll", "valid_ll", "test_ll"]
 
 
@@ -61,7 +61,7 @@ end
 Every log step
 """
 function log_per_iter(pc, data, results; opts, vtree=nothing, time=missing, epoch=nothing, save_csv=true,
-        var=missing, mi=missing, S1=missing, S2=missing, S=missing, num_vars=missing,
+        var=missing, mi=missing, S1=missing, S2=missing, S=missing, num_vars=missing, layer_used=missing,
         ckt_size=missing, save_freq=500, savecircuit=true)
     # from kwargs
     if !isdir(opts["outdir"])
@@ -88,6 +88,7 @@ function log_per_iter(pc, data, results; opts, vtree=nothing, time=missing, epoc
     push!(results["S2"], S2)
     push!(results["S"], S)
     push!(results["num_vars"], num_vars)
+    push!(results["layer_used"], layer_used)
 
     println("S1 : $S1")
     println("S2 : $S2")
@@ -196,6 +197,7 @@ function learn_single_model(train_x, valid_x, test_x;
     num_vars = -1
     var = -1
     ckt_size = -1
+    layer_used = -1
 
     # structure_update
     # loss_split(circuit) = heuristic_loss(circuit, train_x; pick_edge=pick_edge, pick_var=pick_var)
@@ -206,7 +208,7 @@ function learn_single_model(train_x, valid_x, test_x;
         # c::ProbCircuit, _, split_score_val
         tup, info_arr = split_step(circuit; loss=loss_split, depth=depth, sanity_check=sanity_check)
         c = tup[1]
-        split_score_val, S1, S2, S, num_vars, var, ckt_size = info_arr
+        split_score_val, S1, S2, S, num_vars, layer_used, var, ckt_size = info_arr
         score_val = split_score_val
         estimate_parameters(c, train_x; pseudocount=pseudocount)
         return c, missing
@@ -226,7 +228,7 @@ function learn_single_model(train_x, valid_x, test_x;
             toc = Base.time_ns()
             log_per_iter(circuit, train_x, results;
             opts=log_opts, vtree=vtree, epoch=iter, time=(toc-tic)/1.0e9, mi=score_val,
-            S1=S1, S2=S2, S=S, num_vars=num_vars,
+            S1=S1, S2=S2, S=S, num_vars=num_vars, layer_used=layer_used,
             var=var, ckt_size=ckt_size)
         end
         iter += 1

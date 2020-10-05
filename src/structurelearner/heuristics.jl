@@ -364,6 +364,46 @@ function independenceMI(mat, marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, 
 end
 
 
+function s_min(s1, s2)
+    s = 0.0
+    if s1 == Inf
+        s = s2
+    elseif s2 == Inf
+        s = s1
+    else
+        s = min(s1,s2)
+    end
+    return s
+end
+
+function s_weighted(s1, s2)
+    s = 0.0
+    if s1 == Inf
+        s = s2
+    elseif s2 == Inf
+        s = s1
+    else
+        w1 = s1 / (s1 + s2)
+        w2 = s2 / (s1 + s2)
+        s = w1*s1 + s2*s2
+    end
+    return s
+end
+
+function s_max(s1, s2)
+    s = 0.0
+    if s1 == Inf
+        s = s2
+    elseif s2 == Inf
+        s = s1
+    else
+        s = max(s1, s2)
+    end
+    return s
+end
+
+
+
 function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}}, scope, data_matrix)
     dmat = BitArray(convert(Matrix, data_matrix))
     d_d = dmat' * dmat
@@ -420,6 +460,8 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
     tvar0 = Base.time_ns()
 
     done = false
+    layer_used = -1
+
     for layer_id in 1:length(layered_cands)
         if done == true
             break
@@ -494,13 +536,14 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
                 end
 
                 s = 0.0
-                if s1 == Inf
-                    s = s2
-                elseif s2 == Inf
-                    s = s1
-                else
-                    s = s1 + s2
-                end
+                # if s1 == Inf
+                #     s = s2
+                # elseif s2 == Inf
+                #     s = s1
+                # else
+                #     s = s1 + s2
+                # end
+                s = s_max(s1, s2)
 
                 t1 = Base.time_ns()
                 # println("i:$i / $(length(candidates)), One Check Time : $((t1 - t0)/1.0e9)")
@@ -529,6 +572,8 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
                     min_s1 = s1 / (1.0 * num_vars)
                     min_s2 = s2 / (1.0 * num_vars)
                     min_s = stotal / (1.0 * num_vars)
+
+                    layer_used = layer_id
                 end
             end
 
@@ -554,7 +599,7 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
         return -1, nothing, nothing, nothing
     end
 
-    return [min_score, min_s1, min_s2, min_s, num_vars] , Var.(var0), (or0, and0)
+    return [min_score, min_s1, min_s2, min_s, num_vars, layer_used] , Var.(var0), (or0, and0)
 end
 
 function ind_clone(values, flows, candidates::Vector{Tuple{Node, Node, Node}}, scope, data_matrix)
