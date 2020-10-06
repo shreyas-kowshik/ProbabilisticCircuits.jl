@@ -481,7 +481,7 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
             break
         end
 
-        candidates = layered_cands[layer_id]
+        # candidates = layered_cands[layer_id]
 
 
         for (i, (or, and)) in enumerate(candidates)
