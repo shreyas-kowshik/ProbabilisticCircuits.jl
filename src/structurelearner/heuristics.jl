@@ -554,16 +554,16 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
                 end
 
                 s = 0.0
-                w1 = sum(pos_scope) * 1.0
-                w2 = sum(neg_scope) * 1.0
-                w = sum(examples_id) * 1.0
+                w1 = (sum(pos_scope)) / (1.0 * N)
+                w2 = (sum(neg_scope)) / (1.0 * N)
+                w = (sum(examples_id)) / (1.0 * N)
 
                 if s1 == Inf
-                    s = (s2/w2) - (stotal/w)
+                    s = (s2*w2) - (stotal*w)
                 elseif s2 == Inf
-                    s = (s1/w1) - (stotal/w)
+                    s = (s1*w1) - (stotal*w)
                 else
-                    s = (s1/w1) + (s2/w2) - (2.0*stotal/w)
+                    s = (s1*w1) + (s2*w2) - (2.0*stotal*w)
                 end
 
                 t1 = Base.time_ns()
