@@ -414,7 +414,8 @@ end
 
 
 
-function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}}, scope, data_matrix)
+function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}}, scope, data_matrix;
+                       iter=iter)
     dmat = BitArray(convert(Matrix, data_matrix))
     d_d = dmat' * dmat
     d_nd = dmat' * (.!(dmat))
@@ -476,12 +477,35 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
     sum_pos = -1
     sum_neg = -1
 
-    for layer_id in 1:length(layered_cands)
+    # layer_id = 
+    println(iter)
+    # iter = iter + 1
+    t1 = 2^(length(layered_cands)) - 1
+    iter = ((iter - 1)%t1) + 1
+    lid = ((ceil(Int, log2(iter + 1)) - 1) % length(layered_cands)) + 1
+
+    total_count = 0
+
+    # for layer_id in length(layered_cands):-1:1
+    while true
+        total_count += 1
+
+        if total_count > 1
+            lid = lid + 1
+            lid = ((lid - 1)%length(layered_cands)) + 1
+        end
+
+        layer_id = length(layered_cands) - lid + 1
+        # println("layer_id : $layer_id, length : $(length(layered_cands))")
+
         if done == true
             break
         end
 
-        # candidates = layered_cands[layer_id]
+        # layer_id = 1
+        candidates = layered_cands[layer_id]
+        # println(length(candidates))
+        println(layer_id)
 
 
         for (i, (or, and)) in enumerate(candidates)
@@ -517,7 +541,7 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
             stotal = independenceMI_gpu_wrapper(dmat[examples_id, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
 
             if stotal == 0.0
-                # println("Already faithful!!!\n\n\n")
+                # println("layer_id:$layer_id, Already faithful!!!\n\n\n")
                 continue
             end
 
@@ -728,11 +752,11 @@ function ind_clone(values, flows, candidates::Vector{Tuple{Node, Node, Node}}, s
     return min_score, or0, and00, and01
 end
 
-function ind_loss_split(circuit::LogicCircuit, train_x)
+function ind_loss_split(circuit::LogicCircuit, train_x; iter=iter)
     candidates, scope = split_candidates(circuit)
     values, flows = satisfies_flows(circuit, train_x)
 
-    info_arr, var, (or, and) = ind_prime_sub(circuit, values, flows, candidates, scope, train_x)
+    info_arr, var, (or, and) = ind_prime_sub(circuit, values, flows, candidates, scope, train_x; iter=iter)
 
     return info_arr, (or, and), Var(var)
 end

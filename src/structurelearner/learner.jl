@@ -207,9 +207,11 @@ function learn_single_model(train_x, valid_x, test_x;
     sum_pos = -1
     sum_neg = -1
 
+    iter = 0
+
     # structure_update
     # loss_split(circuit) = heuristic_loss(circuit, train_x; pick_edge=pick_edge, pick_var=pick_var)
-    loss_split(circuit) = ind_loss_split(circuit, train_x)
+    loss_split(circuit) = ind_loss_split(circuit, train_x; iter=iter)
     loss_clone(circuit) = ind_loss_clone(circuit, train_x)
 
     pc_split_step(circuit) = begin
@@ -230,7 +232,7 @@ function learn_single_model(train_x, valid_x, test_x;
         return c, missing
     end
     
-    iter = 0
+    
     log_per_iter_inline(circuit) = begin
         if issomething(log_opts)
             toc = Base.time_ns()
