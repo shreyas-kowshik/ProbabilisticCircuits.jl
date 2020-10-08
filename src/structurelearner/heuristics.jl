@@ -449,6 +449,8 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
         end
     end
 
+    # println("LAYERS : $(length(bc.layers))")
+
     layered_cands = Vector{Vector{Tuple{Node, Node}}}(undef, length(bc.layers))
     for i in 1:length(layered_cands)
         layered_cands[i] = []
@@ -477,12 +479,49 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
     sum_pos = -1
     sum_neg = -1
 
+    lid = -1
+
     # layer_id = 
     println(iter)
     # iter = iter + 1
-    t1 = 2^(length(layered_cands)) - 1
-    iter = ((iter - 1)%t1) + 1
-    lid = ((ceil(Int, log2(iter + 1)) - 1) % length(layered_cands)) + 1
+    layer_map = Dict()
+    layer_map[length(layered_cands)] = 1
+
+    for t1 in length(layered_cands)-1:-1:1
+        layer_map[t1] = minimum([layer_map[t1+1]*2, 64])
+    end
+
+    println(layer_map)
+    # println(collect(values(layer_map)))
+
+    # t1 = sum(values(layer_map))
+    t1 = 0.0
+    for (k,v) in layer_map
+        t1 += v
+    end
+
+    if t1 <= 10000
+        iter = ((iter - 1)%t1) + 1
+    end
+
+    tup1 = sort(collect(layer_map), by=x->x[2])
+    println(tup1)
+    for i in 2:length(tup1)
+        tup1[i] = (tup1[i][1] => tup1[i - 1][2] + tup1[i][2])
+    end
+
+    println(tup1)
+
+    for i in 1:length(tup1)-1
+        if iter > tup1[i][2] && iter <= tup1[i+1][2]
+            lid = tup1[i+1][1]
+            break
+        end
+    end
+
+    if lid == -1
+        lid = 1
+    end
 
     total_count = 0
 
@@ -495,7 +534,8 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
             lid = ((lid - 1)%length(layered_cands)) + 1
         end
 
-        layer_id = length(layered_cands) - lid + 1
+        # layer_id = length(layered_cands) - lid + 1
+        layer_id = lid
         # println("layer_id : $layer_id, length : $(length(layered_cands))")
 
         if done == true
