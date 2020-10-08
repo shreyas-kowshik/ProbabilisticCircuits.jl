@@ -479,73 +479,87 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
     sum_pos = -1
     sum_neg = -1
 
-    lid = -1
+    min_score1 = Inf
+    or01 = -1
+    and01 = -1
+    var01 = -1
+    min_s11 = -1
+    min_s21 = -1
+    min_s1 = -1
+
+    sum_ex1 = -1
+    sum_pos1 = -1
+    sum_neg1 = -1
+
+    num_vars1 = -1
+    layer_used1 = -1
 
     # layer_id = 
-    println(iter)
-    # iter = iter + 1
-    layer_map = Dict()
-    layer_map[length(layered_cands)] = 1
+    # println(iter)
+    # # iter = iter + 1
+    # layer_map = Dict()
+    # layer_map[length(layered_cands)] = 1
 
-    for t1 in length(layered_cands)-1:-1:1
-        layer_map[t1] = minimum([layer_map[t1+1]*2, 64])
-    end
+    # for t1 in length(layered_cands)-1:-1:1
+    #     layer_map[t1] = minimum([layer_map[t1+1]*2, 64])
+    # end
 
-    println(layer_map)
-    # println(collect(values(layer_map)))
+    # println(layer_map)
+    # # println(collect(values(layer_map)))
 
-    # t1 = sum(values(layer_map))
-    t1 = 0.0
-    for (k,v) in layer_map
-        t1 += v
-    end
+    # # t1 = sum(values(layer_map))
+    # t1 = 0.0
+    # for (k,v) in layer_map
+    #     t1 += v
+    # end
 
-    if t1 <= 10000
-        iter = ((iter - 1)%t1) + 1
-    end
+    # if t1 <= 10000
+    #     iter = ((iter - 1)%t1) + 1
+    # end
 
-    tup1 = sort(collect(layer_map), by=x->x[2])
-    println(tup1)
-    for i in 2:length(tup1)
-        tup1[i] = (tup1[i][1] => tup1[i - 1][2] + tup1[i][2])
-    end
+    # tup1 = sort(collect(layer_map), by=x->x[2])
+    # println(tup1)
+    # for i in 2:length(tup1)
+    #     tup1[i] = (tup1[i][1] => tup1[i - 1][2] + tup1[i][2])
+    # end
 
-    println(tup1)
+    # println(tup1)
 
-    for i in 1:length(tup1)-1
-        if iter > tup1[i][2] && iter <= tup1[i+1][2]
-            lid = tup1[i+1][1]
-            break
-        end
-    end
+    # for i in 1:length(tup1)-1
+    #     if iter > tup1[i][2] && iter <= tup1[i+1][2]
+    #         lid = tup1[i+1][1]
+    #         break
+    #     end
+    # end
 
-    if lid == -1
-        lid = 1
-    end
+    # if lid == -1
+    #     lid = 1
+    # end
 
-    total_count = 0
+    # total_count = 0
 
-    # for layer_id in length(layered_cands):-1:1
-    while true
-        total_count += 1
+    for layer_id in 1:1
+    # for layer_id in 1:layered_cands
+    # while true
+    #     total_count += 1
 
-        if total_count > 1
-            lid = lid + 1
-            lid = ((lid - 1)%length(layered_cands)) + 1
-        end
+    #     if total_count > 1
+    #         lid = lid + 1
+    #         lid = ((lid - 1)%length(layered_cands)) + 1
+    #     end
 
-        # layer_id = length(layered_cands) - lid + 1
-        layer_id = lid
-        # println("layer_id : $layer_id, length : $(length(layered_cands))")
+    #     # layer_id = length(layered_cands) - lid + 1
+    #     layer_id = lid
+    #     # println("layer_id : $layer_id, length : $(length(layered_cands))")
 
         if done == true
             break
         end
 
         # layer_id = 1
-        candidates = layered_cands[layer_id]
+        # candidates = layered_cands[layer_id]
         # println(length(candidates))
-        println(layer_id)
+        # println(layer_id)
 
 
         for (i, (or, and)) in enumerate(candidates)
@@ -646,7 +660,37 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
                 num_vars = length(prime_sub_lits)
                 # s = s / (1.0 * num_vars)
 
-                
+                if s < min_score1
+                    min_score1 = s
+                    or01 = or
+                    and01 = and
+                    var01 = var
+                    # done=true
+
+                    min_s11 = s1
+                    min_s21 = s2
+                    min_s1 = stotal
+                    num_vars1 = length(prime_sub_lits)
+                    sum_ex1 = sum(examples_id)
+                    sum_pos1 = sum(pos_scope)
+                    sum_neg1 = sum(neg_scope)
+
+                    layer_used1 = layer_id
+                end
+
+                if w1 < 0.1 && s1 != Inf
+                    continue
+                end
+
+                if w2 < 0.1 && s2 != Inf
+                    continue
+                end
+
+                # if w < 0.05
+                #     continue
+                # end
+
+
 
                 if s < min_score
                     min_score = s
@@ -658,7 +702,7 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
                     min_s1 = s1
                     min_s2 = s2
                     min_s = stotal
-
+                    num_vars = length(prime_sub_lits)
                     sum_ex = sum(examples_id)
                     sum_pos = sum(pos_scope)
                     sum_neg = sum(neg_scope)
@@ -686,6 +730,24 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
     println("Looping Time : $((tvar1 - tvar0)/1.0e9)")
 
     if or0 == nothing || and0 == nothing || var0 == nothing
+        println("W1 condition not satisfied by any candidate!")
+        min_score = min_score1
+        or0 = or01
+        and0 = and01
+        var0 = var01
+
+        min_s1 = min_s11
+        min_s2 = min_s21
+        min_s = min_s1
+        num_vars = num_vars1
+        sum_ex = sum_ex1
+        sum_pos = sum_pos1
+        sum_neg = sum_neg1
+
+        layer_used1 = layer_used
+    end
+
+    if or0 == nothing || and0 == nothing || var0 == nothing   
         return -1, nothing, nothing, nothing
     end
 
