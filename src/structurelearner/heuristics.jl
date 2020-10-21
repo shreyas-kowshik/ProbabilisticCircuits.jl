@@ -201,10 +201,14 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
     min_s1 = Inf
     min_s2 = Inf
     min_s = Inf
+    min_size_s = Inf
     num_vars = nothing
     or0 = nothing
     and0 = nothing
     var0 = nothing
+
+    α_size = 1.0
+    overall_size = num_nodes(pc)
 
 
     # Choose one layer to reduce computation #
@@ -254,6 +258,7 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
     min_s11 = -1
     min_s21 = -1
     min_s1 = -1
+    min_size_s1 = -1
 
     sum_ex1 = -1
     sum_pos1 = -1
@@ -428,6 +433,12 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
                 num_vars = length(prime_sub_lits)
                 # s = s / (1.0 * num_vars)
 
+                size_score = (num_nodes(or)) / (1.0 * overall_size)
+                # s += (α_size * size_score)
+                s = (50.0 * s) + size_score
+
+
+
                 if s < min_score1
                     min_score1 = s
                     or01 = or
@@ -438,10 +449,12 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
                     min_s11 = s1
                     min_s21 = s2
                     min_s1 = stotal
+                    min_size_s1 = size_score
                     num_vars1 = length(prime_sub_lits)
                     sum_ex1 = sum(examples_id)
                     sum_pos1 = sum(pos_scope)
                     sum_neg1 = sum(neg_scope)
+
 
                     layer_used1 = layer_id
                 end
@@ -458,6 +471,9 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
                 #     continue
                 # end
 
+                
+
+
 
 
                 if s < min_score
@@ -470,6 +486,7 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
                     min_s1 = s1
                     min_s2 = s2
                     min_s = stotal
+                    min_size_s = size_score
                     num_vars = length(prime_sub_lits)
                     sum_ex = sum(examples_id)
                     sum_pos = sum(pos_scope)
@@ -507,6 +524,7 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
         min_s1 = min_s11
         min_s2 = min_s21
         min_s = min_s1
+        min_size_s = min_size_s1
         num_vars = num_vars1
         sum_ex = sum_ex1
         sum_pos = sum_pos1
@@ -514,6 +532,8 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
 
         layer_used1 = layer_used
     end
+
+    println("Min Size S : $(min_size_s)")
 
     if or0 == nothing || and0 == nothing || var0 == nothing   
         return -1, nothing, nothing, nothing
