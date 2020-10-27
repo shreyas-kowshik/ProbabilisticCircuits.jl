@@ -433,10 +433,10 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
                 num_vars = length(prime_sub_lits)
                 # s = s / (1.0 * num_vars)
 
-                # size_score = (num_nodes(or)) / (1.0 * overall_size)
-                size_score = num_nodes(or) * 0.0001
+                size_score = (num_nodes(or)) / (1.0 * overall_size)
+                # size_score = num_nodes(or) * 0.0001
                 # s += (α_size * size_score)
-                # s = (10.0 * s) / size_score
+                s = (10.0 * s) / size_score
                 # s = (1000.0 * s)
 
 
