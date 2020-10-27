@@ -140,7 +140,7 @@ function independenceMI_gpu_wrapper(dmat, marginals, d_d, d_nd, nd_nd, prime_lit
     num_threads = (16, 16)
     num_blocks = (ceil(Int, num_vars/16), ceil(Int, num_vars/16))
 
-    α = 1.0
+    α = 0.0
     N = size(dmat)[1]
 
     dummy = ones(num_prime_vars+num_sub_vars,num_prime_vars+num_sub_vars)
@@ -190,7 +190,7 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
     nd_nd = (.!(dmat))' * (.!(dmat))
 
     N = size(data_matrix)[1]
-    α = 1.0
+    α = 0.0
 
     d_d = (d_d .+ (4.0 * α)) ./ (N + 4.0 * α)
     d_nd = (d_nd .+ (4.0 * α)) ./ (N + 4.0 * α)
@@ -207,7 +207,7 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
     and0 = nothing
     var0 = nothing
 
-    α_size = 1.0
+    α_size = 0.0
     overall_size = num_nodes(pc)
 
 
@@ -433,9 +433,11 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
                 num_vars = length(prime_sub_lits)
                 # s = s / (1.0 * num_vars)
 
-                size_score = (num_nodes(or)) / (1.0 * overall_size)
+                # size_score = (num_nodes(or)) / (1.0 * overall_size)
+                size_score = num_nodes(or) * 0.0001
                 # s += (α_size * size_score)
-                s = (10.0 * s) / size_score
+                # s = (10.0 * s) / size_score
+                # s = (1000.0 * s)
 
 
 
@@ -534,12 +536,14 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
     end
 
     println("Min Size S : $(min_size_s)")
+    println("Min H : $(min_score - min_size_s)")
+
 
     if or0 == nothing || and0 == nothing || var0 == nothing   
         return -1, nothing, nothing, nothing
     end
 
-    return [min_score, min_s1, min_s2, min_s, num_vars, layer_used, sum_ex, sum_pos, sum_neg] , Var.(var0), (or0, and0)
+    return [min_score, min_s1, min_s2, min_s, min_size_s, num_vars, layer_used, sum_ex, sum_pos, sum_neg] , Var.(var0), (or0, and0)
 end
 
 function ind_clone(values, flows, candidates::Vector{Tuple{Node, Node, Node}}, scope, data_matrix)
