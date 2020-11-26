@@ -140,7 +140,7 @@ function independenceMI_gpu_wrapper(dmat, marginals, d_d, d_nd, nd_nd, prime_lit
     num_threads = (16, 16)
     num_blocks = (ceil(Int, num_vars/16), ceil(Int, num_vars/16))
 
-    α = 0.0
+    α = 1.0
     N = size(dmat)[1]
 
     dummy = ones(num_prime_vars+num_sub_vars,num_prime_vars+num_sub_vars)
@@ -182,6 +182,106 @@ function independenceMI_gpu_wrapper(dmat, marginals, d_d, d_nd, nd_nd, prime_lit
     return cpu_pMI
 end
 
+"""
+k-way pMI computation
+"""
+function general_pMI_cpu(dmat, marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map,k=2)
+    mapped_primes = [lit_map[p] for p in prime_lits]
+    mapped_subs = [lit_map[s] for s in sub_lits]
+
+    num_prime_vars = length(mapped_primes)
+    num_sub_vars = length(mapped_subs)
+    num_vars = num_prime_vars + num_sub_vars
+
+    α = 1.0
+    N = size(dmat)[1]
+
+    """
+    Loop over NCk on primes
+    Loop over NCk on subs
+    Compute pMI for the current subsets selected
+    """
+    k1 = minimum([k, length(mapped_primes)])
+    k2 = minimum([k, length(mapped_subs)])
+
+    # println("K1 : $k1")
+    # println("K2 : $k2")
+
+    # if k1 == 1 || k2 == 1
+    #     return independenceMI_gpu_wrapper(dmat, marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
+    # end
+
+    # println("Using K-Way formulation")
+
+    pMI_val = 0.0
+    for primes in combinations(mapped_primes, k1)
+        for subs in combinations(mapped_subs, k2)
+            # Assume k=2 for now #
+            # Generalise later if required #
+
+            # x1x2 : Prime Variables
+            # y1y2 : Sub Variables
+
+
+            prime_mat_vals = []
+            sub_mat_vals = []
+            vec_x1x2 = mapreduce(x->x, &, dmat[:, Var.(primes)], dims=[2])
+            push!(prime_mat_vals, vec_x1x2)
+
+            if k1 > 1
+                d = dmat[:, Var.(primes)]
+                d[:, 1] = .!(d[:, 1])
+                vec_nx1x2 = mapreduce(x->x, &, d, dims=[2])
+                push!(prime_mat_vals, vec_nx1x2)
+
+                d = dmat[:, Var.(primes)]
+                d[:, 2] = .!(d[:, 2])
+                vec_x1nx2 = mapreduce(x->x, &, d, dims=[2])
+                push!(sub_mat_vals, vec_x1nx2)
+            end
+
+            d = dmat[:, Var.(primes)]
+            d = .!(d)
+            vec_nx1nx2 = mapreduce(x->x, &, d, dims=[2])
+            push!(prime_mat_vals, vec_nx1nx2)
+
+            vec_y1y2 = mapreduce(x->x, &, dmat[:, Var.(subs)], dims=[2])
+            push!(sub_mat_vals, vec_y1y2)
+
+            if k2 > 1
+                d = dmat[:, Var.(subs)]
+                d[:, 1] = .!(d[:, 1])
+                vec_ny1y2 = mapreduce(x->x, &, d, dims=[2])
+                push!(sub_mat_vals, vec_ny1y2)
+
+                d = dmat[:, Var.(subs)]
+                d[:, 2] = .!(d[:, 2])
+                vec_y1ny2 = mapreduce(x->x, &, d, dims=[2])
+                push!(sub_mat_vals, vec_y1ny2)
+            end
+
+            d = dmat[:, Var.(subs)]
+            d = .!(d)
+            vec_ny1ny2 = mapreduce(x->x, &, d, dims=[2])
+            push!(sub_mat_vals, vec_ny1ny2)
+
+            for pval in prime_mat_vals
+                for sval in sub_mat_vals
+                    pcomb = sum(pval .& sval)/N
+                    pprimes = sum(pval)/N
+                    psubs = sum(sval)/N
+
+                    pMI_val += (pcomb * (log((pcomb / ((pprimes * psubs) + 1e-6)) + 1e-6)))
+                end
+            end
+
+            ######################
+        end
+    end
+
+    return pMI_val / (num_prime_vars + num_sub_vars)
+end
+
 function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}}, scope, data_matrix;
                        iter=iter)
     dmat = BitArray(convert(Matrix, data_matrix))
@@ -190,7 +290,7 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
     nd_nd = (.!(dmat))' * (.!(dmat))
 
     N = size(data_matrix)[1]
-    α = 0.0
+    α = 1.0
 
     d_d = (d_d .+ (4.0 * α)) ./ (N + 4.0 * α)
     d_nd = (d_nd .+ (4.0 * α)) ./ (N + 4.0 * α)
@@ -207,7 +307,7 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
     and0 = nothing
     var0 = nothing
 
-    α_size = 0.0
+    α_size = 1.0
     overall_size = num_nodes(pc)
 
 
@@ -365,7 +465,7 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
             stotal = 0.0
 
             # println("---stotal---")
-            stotal = independenceMI_gpu_wrapper(dmat[examples_id, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
+            stotal = general_pMI_cpu(dmat[examples_id, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
 
             if stotal == 0.0
                 # println("layer_id:$layer_id, Already faithful!!!\n\n\n")
@@ -397,11 +497,11 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
 
                 if sum(pos_scope) > 0
                     # println("---s1---")
-                    s1 = independenceMI_gpu_wrapper(dmat[pos_scope, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
+                    s1 = general_pMI_cpu(dmat[pos_scope, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
                 end
                 if sum(neg_scope) > 0
                     # println("---s2---")
-                    s2 = independenceMI_gpu_wrapper(dmat[neg_scope, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
+                    s2 = general_pMI_cpu(dmat[neg_scope, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
                 end
 
                 s = 0.0
@@ -433,10 +533,10 @@ function ind_prime_sub(pc, values, flows, candidates::Vector{Tuple{Node, Node}},
                 num_vars = length(prime_sub_lits)
                 # s = s / (1.0 * num_vars)
 
-                size_score = (num_nodes(or)) / (1.0 * overall_size)
-                # size_score = num_nodes(or) * 0.0001
+                # size_score = (num_nodes(or)) / (1.0 * overall_size)
+                size_score = num_nodes(or) * 0.0001
                 # s += (α_size * size_score)
-                s = (10.0 * s) / size_score
+                # s = (10.0 * s) / size_score
                 # s = (1000.0 * s)
 
 
@@ -622,9 +722,9 @@ function ind_clone(values, flows, candidates::Vector{Tuple{Node, Node, Node}}, s
             ex_and1 = examples_id1 .& examples_and
             ex_and2 = examples_id2 .& examples_and
 
-            sbefore = independenceMI_gpu_wrapper(dmat[ex_and_before, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
-            s1 = independenceMI_gpu_wrapper(dmat[ex_and1, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
-            s2 = independenceMI_gpu_wrapper(dmat[ex_and2, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
+            sbefore = general_pMI_cpu(dmat[ex_and_before, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
+            s1 = general_pMI_cpu(dmat[ex_and1, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
+            s2 = general_pMI_cpu(dmat[ex_and2, prime_sub_vars], marginals, d_d, d_nd, nd_nd, prime_lits, sub_lits, lit_map)
 
             stotal += sbefore
             cur_score += (s1 + s2)

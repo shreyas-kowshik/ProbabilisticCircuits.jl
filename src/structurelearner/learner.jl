@@ -6,6 +6,7 @@ using Random
 using DataFrames
 using CSV
 using LinearAlgebra
+using Combinatorics
 
 """
 Learn faithful structured decomposable circuits
